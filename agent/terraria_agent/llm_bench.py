@@ -331,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     tasks = [t for t in TASKS if not a.only or t.name in a.only]
     out = ROOT / "runs" / "llm" / f"{time.strftime('%Y%m%d-%H%M%S')}-{a.mode}-{a.library}"
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
+            "library_path": str(lib_path), "bridge": a.bridge,
             "library_size_at_start": len(library.skills) if library else 0}
     results = []
     for i, t in enumerate(TASKS):

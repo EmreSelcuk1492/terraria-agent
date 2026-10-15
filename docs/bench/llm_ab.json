@@ -1,0 +1,30 @@
+[
+ {
+  "key": "fresh #1 wood",
+  "pass": "fresh",
+  "rep": 1,
+  "task": "wood",
+  "passed": true,
+  "attempts": 1,
+  "llm_calls": 1,
+  "llm_seconds": 6.3,
+  "game_seconds": 100.1,
+  "used_library": "",
+  "saved_as": "collect_wood",
+  "report": "agent/runs/llm/20261015-150008-primitive-fresh/report.md"
+ },
+ {
+  "key": "fresh #1 workbench",
+  "pass": "fresh",
+  "rep": 1,
+  "task": "workbench",
+  "passed": false,
+  "attempts": 3,
+  "llm_calls": 3,
+  "llm_seconds": 20.0,
+  "game_seconds": 65.7,
+  "used_library": "collect_wood",
+  "saved_as": "",
+  "report": "agent/runs/llm/20261015-150008-primitive-fresh/report.md"
+ }
+]

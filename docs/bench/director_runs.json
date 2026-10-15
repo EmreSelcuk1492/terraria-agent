@@ -1,0 +1,93 @@
+[
+ {
+  "run": "Run 1",
+  "order": 1,
+  "track": "survival",
+  "where": "Linux sim",
+  "steps_done": 4,
+  "steps_total": 19,
+  "minutes": 10,
+  "deaths": 37,
+  "kills": 1,
+  "note": "First real-world run; deaths over-counted (one per poll, fixed before run 3)",
+  "log": "agent/runs/run1/journal-20261015-112453.md"
+ },
+ {
+  "run": "Run 2",
+  "order": 2,
+  "track": "survival",
+  "where": "Linux sim",
+  "steps_done": 4,
+  "steps_total": 19,
+  "minutes": 23,
+  "deaths": 5,
+  "kills": 0,
+  "note": "LLM advisor answered 10 times while the character stood among zombies",
+  "log": "agent/runs/run2/journal-20261015-113927.md"
+ },
+ {
+  "run": "Run 3",
+  "order": 3,
+  "track": "survival",
+  "where": "Linux sim",
+  "steps_done": 4,
+  "steps_total": 19,
+  "minutes": 6,
+  "deaths": 4,
+  "kills": 0,
+  "note": "attack refused 277 times below 30% health",
+  "log": "agent/runs/run3/journal-20261015-120336.md"
+ },
+ {
+  "run": "Run 4",
+  "order": 4,
+  "track": "survival",
+  "where": "Linux sim",
+  "steps_done": 5,
+  "steps_total": 19,
+  "minutes": 4,
+  "deaths": 6,
+  "kills": 0,
+  "note": "desperate attack + dig_in; first house",
+  "log": "agent/runs/run4/journal-20261015-133400.md"
+ },
+ {
+  "run": "Run 5",
+  "order": 5,
+  "track": "survival",
+  "where": "Linux sim",
+  "steps_done": 5,
+  "steps_total": 19,
+  "minutes": 4,
+  "deaths": 7,
+  "kills": 0,
+  "note": "dig in at 50% health",
+  "log": "agent/runs/run5/journal-20261015-133848.md"
+ },
+ {
+  "run": "Run 6",
+  "order": 6,
+  "track": "build (peaceful)",
+  "where": "Linux sim",
+  "steps_done": 7,
+  "steps_total": 19,
+  "minutes": 11,
+  "deaths": 0,
+  "kills": 0,
+  "note": "no hostile spawns, no damage",
+  "log": "agent/runs/journal-20261015-134333.md"
+ },
+ {
+  "run": "Mac run",
+  "order": 7,
+  "track": "build (peaceful)",
+  "where": "Mac, on screen",
+  "steps_done": 7,
+  "steps_total": 19,
+  "minutes": 18,
+  "deaths": 0,
+  "kills": 0,
+  "note": "same build track on the real screen",
+  "log": "agent/runs/mac/journal-20261015-134524.md"
+ }
+]

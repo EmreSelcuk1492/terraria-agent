@@ -1,0 +1,273 @@
+<style>
+  .tb { display: grid; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); max-width: 72rem; margin-inline: auto; }
+  .tb-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+  .tb-head p { margin: var(--cds-gap-sm) 0 0; color: var(--color-fg-muted); max-width: 46rem; line-height: 1.55; }
+  .tb-take { color: var(--color-fg) !important; font-size: var(--cds-font-size-heading); }
+  .tb-tiles { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); }
+  .tb-tile, .tb-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+  .tb-tile .lbl { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); letter-spacing: .02em; }
+  .tb-tile .big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; margin-top: var(--cds-gap-xs); min-height: 1.3em; }
+  .tb-tile .sub { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin-top: var(--cds-gap-xs); line-height: 1.45; }
+  .tb-sec { display: grid; gap: var(--cds-gap-md); }
+  .tb-sec > h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .tb-sec > p { margin: 0; color: var(--color-fg-muted); max-width: 48rem; line-height: 1.55; }
+  .tb-grid { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+  .tb-card h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .tb-card .note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: var(--cds-gap-xs) 0 var(--cds-gap-md); line-height: 1.45; }
+  .tb-chart { position: relative; min-height: 240px; }
+  .tb-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); max-width: 18rem; line-height: 1.4; }
+  .tb-tip .k { color: var(--cds-text-secondary); }
+  .tb-table-wrap { overflow-x: auto; }
+  .tb-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+  .tb-table th { text-align: left; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .tb-table td { padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; line-height: 1.45; }
+  .tb-table td.num { white-space: nowrap; }
+  .chip { display: inline-block; min-width: 2.6rem; text-align: center; border-radius: 999px; padding: 1px 8px; font-weight: var(--cds-font-weight-medium); }
+  .chip.ok { color: var(--color-ok); background: color-mix(in srgb, var(--color-ok) 14%, transparent); }
+  .chip.warn { color: var(--color-warn); background: color-mix(in srgb, var(--color-warn) 14%, transparent); }
+  .chip.bad { color: var(--color-bad); background: color-mix(in srgb, var(--color-bad) 14%, transparent); }
+  .tb-find td:nth-child(3) { min-width: 16rem; }
+  .tb-find td:nth-child(4) { min-width: 12rem; }
+  .tb-honest { display: grid; gap: var(--cds-gap-sm); grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+  .tb-honest div { font-size: var(--cds-font-size-caption); line-height: 1.5; color: var(--color-fg-muted); }
+  .tb-honest b { color: var(--color-fg); font-weight: var(--cds-font-weight-medium); display: block; margin-bottom: 2px; }
+  .tb-wait { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  [data-dash-source-state=empty] { color: transparent; }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="tb">
+  <header class="tb-head" id="top">
+    <h1>Terraria Agent Bench</h1>
+    <p class="tb-take" id="takeaway">Survival scenarios pass <span data-source="survival_latest" data-field="passed">—</span> of <span data-source="survival_latest" data-field="attempts">—</span>, A* clears <span data-source="nav_totals" data-field="passed" data-where="walker=A*">—</span> of <span data-source="nav_totals" data-field="attempts" data-where="walker=A*">—</span> navigation courses where the old walker cleared <span data-source="nav_totals" data-field="passed" data-where="walker=greedy">—</span>, and the starter plan reaches step <span data-source="director_best" data-field="steps_done">—</span> of 19.</p>
+    <p>An agent that plays real Terraria (tModLoader, in Linux containers and on a Mac screen) through a bridge mod: a local open model (gpt-oss:20b) plans, skills written in C# act in the game, and a benchmark checks every claim against the live game state. Each number below links to the run that produced it. Failures stay on the page.</p>
+  </header>
+
+  <section class="tb-tiles" aria-label="Headline figures">
+    <div class="tb-tile">
+      <div class="lbl">Survival scenarios passed, latest suite</div>
+      <div class="big"><span data-source="survival_latest" data-field="passed">—</span>/<span data-source="survival_latest" data-field="attempts">—</span></div>
+      <div class="sub">First suite: <span data-source="survival_first" data-field="passed">—</span>/<span data-source="survival_first" data-field="attempts">—</span>. Fights from a fresh-character setup, 3 attempts per scenario.</div>
+    </div>
+    <div class="tb-tile">
+      <div class="lbl">Navigation courses, A* vs greedy</div>
+      <div class="big"><span data-source="nav_totals" data-field="passed" data-where="walker=A*">—</span> vs <span data-source="nav_totals" data-field="passed" data-where="walker=greedy">—</span></div>
+      <div class="sub">Out of <span data-source="nav_totals" data-field="attempts" data-where="walker=A*">—</span> attempts each, same 4 courses.</div>
+    </div>
+    <div class="tb-tile">
+      <div class="lbl">Starter plan, best run</div>
+      <div class="big"><span data-source="director_best" data-field="steps_done">—</span>/19 steps</div>
+      <div class="sub">Survival track best: <span data-source="director_best" data-field="survival_steps">—</span>/19. Runs 1 to 3 stalled at 4.</div>
+    </div>
+    <div class="tb-tile">
+      <div class="lbl">LLM tasks passed: empty vs learned library</div>
+      <div class="big"><span data-source="llm_totals" data-field="passed" data-where="pass=fresh">—</span> vs <span data-source="llm_totals" data-field="passed" data-where="pass=learned">—</span></div>
+      <div class="sub" id="llm-sub">Out of <span data-source="llm_totals" data-field="tasks" data-where="pass=fresh">—</span> task attempts each. Verified in game.</div>
+    </div>
+  </section>
+
+  <section class="tb-sec" id="runs">
+    <h2>From stalling at step 4 to step 7</h2>
+    <p>The Director follows a 19-step starter plan (wood, a house, stone, copper, iron and so on). Runs 1 to 5 played with enemies on; each fix below came from reading the run before it. The build track turns enemies off to measure the plan by itself.</p>
+    <div class="tb-card">
+      <h3>Plan steps completed per run</h3>
+      <div class="note">Bars: steps out of 19. Dots: deaths in the run (run 1 counted every poll while dead; counted once per death from run 3 on).</div>
+      <div class="tb-chart" id="chart-runs" data-source="director_runs"></div>
+    </div>
+  </section>
+
+  <section class="tb-sec" id="scenarios">
+    <h2>Scenario tests replaced five-minute guesses</h2>
+    <p>A scenario puts the world in a known state (enemies at exact offsets, health, time of day, a flat arena rebuilt every attempt) and checks one outcome. Two containers run them in parallel; each suite below is the same scenarios after one fix.</p>
+    <div class="tb-grid">
+      <div class="tb-card">
+        <h3>Survival scenarios across fixes</h3>
+        <div class="note">S1 first suite, S2 after the weapon-reach fix and the arena, S3 adds the flier rule and runs each scenario 3 times. Two zombies at 35 health is a hard case on purpose.</div>
+        <div class="tb-table-wrap">
+          <table class="tb-table" id="table-survival" data-source="survival_matrix" data-row-key="scenario">
+            <thead><tr><th data-field="scenario">Scenario</th><th data-field="S1">S1</th><th data-field="S2">S2</th><th data-field="S3">S3</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="tb-card">
+        <h3>Navigation: A* against the old greedy walker</h3>
+        <div class="note">Passes out of 3 per course, same build, one switch flipped. In the tunnel course the only way in is a shaft behind the start.</div>
+        <div class="tb-chart" id="chart-nav" data-source="nav_matrix" style="min-height:220px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tb-sec" id="llm">
+    <h2>A local model that writes its own skills</h2>
+    <p>For each task, gpt-oss:20b (running on the Mac, no cloud) writes a program of game skills. The game runs it and checks the goal against the inventory; failures go back to the model with the error, up to 3 tries. Programs that pass are saved to a skill library and offered for later tasks. Macros like "obtain" are switched off here, so the model has to compose the crafting chains itself. Pass 1 starts with an empty library; pass 2 starts on an identical world with what pass 1 learned.</p>
+    <div class="tb-card">
+      <h3>Tasks passed, empty library vs learned library</h3>
+      <div class="note" id="llm-note">Bars: tasks passed per pass, summed over repeats. Line labels: total seconds the model spent thinking.</div>
+      <div class="tb-chart" id="chart-llm" data-source="llm_ab" style="min-height:220px"></div>
+    </div>
+    <div class="tb-card">
+      <h3>Every task attempt</h3>
+      <div class="note">Which library skills a task reused, and which new skill it saved.</div>
+      <div class="tb-table-wrap">
+        <table class="tb-table" id="table-llm" data-source="llm_ab" data-row-key="key">
+          <thead><tr><th data-field="key">Run</th><th data-field="task">Task</th><th data-field="passed">Passed</th><th data-field="attempts">Tries</th><th data-field="llm_seconds">Thinking s</th><th data-field="game_seconds">In game s</th><th data-field="used_library">Reused</th><th data-field="saved_as">Saved</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="tb-sec" id="findings">
+    <h2>Found by measuring</h2>
+    <p>Most of the progress came from bugs the numbers exposed, including bugs in the benchmark itself.</p>
+    <div class="tb-card">
+      <div class="tb-table-wrap">
+        <table class="tb-table tb-find" id="table-findings" data-source="findings" data-row-key="id">
+          <thead><tr><th data-field="id">#</th><th data-field="found_by">Found by</th><th data-field="finding">What the data showed</th><th data-field="fix">Fix</th><th data-field="effect">Effect</th><th data-field="commit">Commit</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="tb-sec" id="method">
+    <h2>What is and isn't measured</h2>
+    <div class="tb-honest">
+      <div><b>Real game, real inputs</b>Movement, fighting and item use go through the player's controls each tick, the way a keyboard would. The navigator from TerraBlind (Reisenbug, MIT) runs with its free-item helpers switched off.</div>
+      <div><b>Our shortcuts</b>Mining waits a simulated swing time, then breaks the tile directly; the dig-in bunker places its roof blocks instantly from the inventory. Both are next to move to real item use.</div>
+      <div><b>Test setup, not skills</b>Scenarios teleport, spawn enemies and reset the character to set a known start. The agent never calls these.</div>
+      <div><b>Small numbers</b>Suites run each scenario 1 to 3 times, so one attempt moves a pass rate a lot. More repeats come next; every report is in the repo.</div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const S = (sel) => document.querySelector(sel);
+  const fmt = d3.format(',');
+
+  dash.calc('survival_latest', { inputs: ['scenario_suites'], title: 'Survival, latest suite', description: 'Passes and attempts summed over the latest survival suite (S3).',
+    fn: (scenario_suites) => { const r = scenario_suites.filter(s => s.suite === 'S3'); return [{ passed: d3.sum(r, s => +s.passed), attempts: d3.sum(r, s => +s.attempts) }]; } });
+  dash.calc('survival_first', { inputs: ['scenario_suites'], title: 'Survival, first suite', description: 'Passes and attempts summed over the first survival suite (S1).',
+    fn: (scenario_suites) => { const r = scenario_suites.filter(s => s.suite === 'S1'); return [{ passed: d3.sum(r, s => +s.passed), attempts: d3.sum(r, s => +s.attempts) }]; } });
+  dash.calc('survival_matrix', { inputs: ['scenario_suites'], title: 'Survival by suite', description: 'Each survival scenario as passed/attempts per suite.',
+    fn: (scenario_suites) => { const rows = new Map(); for (const s of scenario_suites.filter(x => x.kind === 'survival')) { if (!rows.has(s.scenario)) rows.set(s.scenario, { scenario: s.scenario }); rows.get(s.scenario)[s.suite] = s.passed + '/' + s.attempts; } return [...rows.values()]; } });
+  dash.calc('nav_matrix', { inputs: ['scenario_suites'], title: 'Navigation, A* vs greedy', description: 'Passes per course for the A* suite (N1) and the greedy suite (N2).',
+    fn: (scenario_suites) => { const nav = scenario_suites.filter(s => s.kind === 'nav'); const courses = [...new Set(nav.map(s => s.scenario))];
+      return courses.map(c => { const a = nav.find(s => s.scenario === c && s.suite === 'N1'), g = nav.find(s => s.scenario === c && s.suite === 'N2');
+        return { course: c, astar: a ? +a.passed : 0, greedy: g ? +g.passed : 0, attempts: a ? +a.attempts : 0 }; }); } });
+  dash.calc('nav_totals', { inputs: ['scenario_suites'], title: 'Navigation totals', description: 'Passes and attempts per walker over all courses.',
+    fn: (scenario_suites) => [['A*', 'N1'], ['greedy', 'N2']].map(([walker, suite]) => { const r = scenario_suites.filter(s => s.suite === suite); return { walker, passed: d3.sum(r, s => +s.passed), attempts: d3.sum(r, s => +s.attempts) }; }) });
+  dash.calc('director_best', { inputs: ['director_runs'], title: 'Best Director runs', description: 'Most plan steps in any run, and in a survival-track run.',
+    fn: (director_runs) => [{ steps_done: d3.max(director_runs, r => +r.steps_done), survival_steps: d3.max(director_runs.filter(r => r.track === 'survival'), r => +r.steps_done) }] });
+  dash.calc('llm_totals', { inputs: ['llm_ab'], title: 'LLM track totals', description: 'Task attempts and passes for the empty-library pass and the learned-library pass, summed over repeats.',
+    fn: (llm_ab) => ['fresh', 'learned'].map(pass => { const r = llm_ab.filter(x => x.pass === pass); return { pass, passed: d3.sum(r, x => x.passed ? 1 : 0), tasks: r.length, llm_seconds: Math.round(d3.sum(r, x => +x.llm_seconds)) }; }) });
+
+  const tip = (box) => { let t = box.querySelector('.tb-tip'); if (!t) { t = document.createElement('div'); t.className = 'tb-tip'; t.hidden = true; box.appendChild(t); } return t; };
+  const place = (box, t, ev) => { const b = box.getBoundingClientRect(); const x = Math.min(ev.clientX - b.left + 12, b.width - t.offsetWidth - 4); t.style.left = Math.max(4, x) + 'px'; t.style.top = (ev.clientY - b.top + 12) + 'px'; };
+  const failed = (el) => { el.innerHTML = ''; const d = document.createElement('div'); d.className = 'tb-wait'; d.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;min-height:inherit'; const dot = document.createElement('span'); dot.style.cssText = 'width:.375rem;height:.375rem;border-radius:50%;background:var(--color-bad)'; d.append(dot, 'Failed to load'); el.appendChild(d); };
+  const chipFor = (txt) => { const [p, a] = String(txt).split('/').map(Number); const s = document.createElement('span'); s.className = 'chip ' + (p === a ? 'ok' : p === 0 ? 'bad' : 'warn'); s.textContent = txt; return s; };
+
+  function drawRuns() {
+    const el = S('#chart-runs'); const d = dash.data('director_runs');
+    if (d.status === 'error') return failed(el);
+    if (d.status !== 'ok') { el.classList.add('dash-skeleton'); return; }
+    el.classList.remove('dash-skeleton'); el.querySelectorAll('svg').forEach(n => n.remove());
+    const rows = d.data, W = el.clientWidth || 600, H = 240, m = { t: 16, r: 40, b: 40, l: 34 };
+    const x = d3.scaleBand(rows.map(r => r.run), [m.l, W - m.r]).padding(0.35);
+    const y = d3.scaleLinear([0, 19], [H - m.b, m.t]);
+    const yd = d3.scaleLinear([0, Math.max(10, d3.max(rows, r => +r.deaths))], [H - m.b, m.t]);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    const ax = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickSize(0)).attr('font-size', null).attr('font-family', null);
+    ax.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); ax.selectAll('text').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)').attr('dy', '1.2em');
+    const ay = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(0)).attr('font-size', null).attr('font-family', null);
+    ay.select('.domain').remove(); ay.selectAll('text').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)');
+    const t = tip(el);
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => x(r.run)).attr('width', x.bandwidth()).attr('y', r => y(+r.steps_done)).attr('height', r => y(0) - y(+r.steps_done)).attr('rx', 4)
+      .attr('fill', r => r.track === 'survival' ? dash.colors[0] : dash.colors[1])
+      .on('mousemove', (ev, r) => { t.hidden = false; t.replaceChildren(); const k = document.createElement('div'); k.className = 'k'; k.textContent = `${r.run} · ${r.track} · ${r.where}`; const v = document.createElement('div'); v.textContent = `${r.steps_done}/19 steps, ${r.deaths} deaths, ${r.kills} kills, ${r.minutes} min`; const n = document.createElement('div'); n.textContent = r.note; t.append(k, v, n); place(el, t, ev); })
+      .on('mouseleave', () => { t.hidden = true; });
+    svg.append('g').selectAll('text').data(rows).join('text').attr('x', r => x(r.run) + x.bandwidth() / 2).attr('y', r => y(+r.steps_done) - 5).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg)').attr('font-size', 'var(--cds-font-size-caption)').text(r => r.steps_done);
+    svg.append('g').selectAll('circle').data(rows.filter(r => +r.deaths > 0)).join('circle').attr('cx', r => x(r.run) + x.bandwidth() / 2).attr('cy', r => yd(Math.min(+r.deaths, yd.domain()[1]))).attr('r', 4).attr('fill', 'var(--cds-chart-status-critical)');
+    const lg = svg.append('g').attr('transform', `translate(${W - m.r},${m.t})`).attr('font-size', 'var(--cds-font-size-caption)');
+    [['enemies on', dash.colors[0]], ['build only', dash.colors[1]], ['deaths', 'var(--cds-chart-status-critical)']].forEach(([lab, c], i) => {
+      const g = lg.append('g').attr('transform', `translate(0,${i * 16})`); g.append('rect').attr('x', -8).attr('y', -8).attr('width', 8).attr('height', 8).attr('rx', 2).attr('fill', c);
+      g.append('text').attr('x', -12).attr('y', 0).attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').text(lab); });
+  }
+
+  function drawSurvival() {
+    const tb = S('#table-survival tbody'); const d = dash.data('survival_matrix'); tb.replaceChildren();
+    if (d.status !== 'ok') return;
+    for (const r of d.data) { const tr = document.createElement('tr'); const n = document.createElement('td'); n.textContent = r.scenario; tr.appendChild(n);
+      for (const s of ['S1', 'S2', 'S3']) { const td = document.createElement('td'); td.className = 'num'; if (r[s]) td.appendChild(chipFor(r[s])); else td.textContent = '—'; tr.appendChild(td); }
+      tb.appendChild(tr); }
+  }
+
+  function drawNav() {
+    const el = S('#chart-nav'); const d = dash.data('nav_matrix');
+    if (d.status === 'error') return failed(el);
+    if (d.status !== 'ok') { el.classList.add('dash-skeleton'); return; }
+    el.classList.remove('dash-skeleton'); el.querySelectorAll('svg').forEach(n => n.remove());
+    const rows = d.data, W = el.clientWidth || 500, H = 220, m = { t: 22, r: 12, b: 34, l: 76 };
+    const y = d3.scaleBand(rows.map(r => r.course), [m.t, H - m.b]).padding(0.3);
+    const yy = d3.scaleBand(['astar', 'greedy'], [0, y.bandwidth()]).padding(0.15);
+    const x = d3.scaleLinear([0, d3.max(rows, r => +r.attempts) || 3], [m.l, W - m.r]);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(x.ticks(3)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+    const ax = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(3).tickFormat(d3.format('d')).tickSize(0)).attr('font-size', null).attr('font-family', null);
+    ax.select('.domain').remove(); ax.selectAll('text').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)').attr('dy', '1.2em');
+    svg.append('g').selectAll('text').data(rows).join('text').attr('x', m.l - 8).attr('y', r => y(r.course) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)').text(r => r.course.replace('nav_', ''));
+    const series = [['astar', 'A*', dash.colors[0]], ['greedy', 'greedy', 'var(--cds-chart-muted)']];
+    for (const [k, lab, c] of series) {
+      svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', m.l).attr('y', r => y(r.course) + yy(k)).attr('height', yy.bandwidth()).attr('width', r => Math.max(0, x(+r[k]) - m.l)).attr('rx', 4).attr('fill', c);
+      svg.append('g').selectAll('text').data(rows).join('text').attr('x', r => x(+r[k]) + 4).attr('y', r => y(r.course) + yy(k) + yy.bandwidth() / 2).attr('dy', '0.35em').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)').text(r => `${r[k]}/${r.attempts}`);
+    }
+    const lg = svg.append('g').attr('transform', `translate(${m.l},${10})`).attr('font-size', 'var(--cds-font-size-caption)');
+    series.forEach(([, lab, c], i) => { const g = lg.append('g').attr('transform', `translate(${i * 80},0)`); g.append('rect').attr('y', -7).attr('width', 8).attr('height', 8).attr('rx', 2).attr('fill', c); g.append('text').attr('x', 12).attr('fill', 'var(--color-fg-muted)').text(lab); });
+  }
+
+  function drawLlm() {
+    const el = S('#chart-llm'); const d = dash.data('llm_totals'); const raw = dash.data('llm_ab');
+    el.querySelectorAll('svg, .tb-wait').forEach(n => n.remove());
+    if (raw.status === 'error' || raw.status === 'missing') { el.classList.remove('dash-skeleton'); const w = document.createElement('div'); w.className = 'tb-wait'; w.style.cssText = 'display:flex;align-items:center;justify-content:center;min-height:inherit'; w.textContent = 'The library A/B is running in the sim now; results land here when it finishes.'; el.appendChild(w); return; }
+    if (d.status !== 'ok') { el.classList.add('dash-skeleton'); return; }
+    el.classList.remove('dash-skeleton');
+    const rows = d.data, W = el.clientWidth || 500, H = 200, m = { t: 16, r: 110, b: 30, l: 120 };
+    const y = d3.scaleBand(rows.map(r => r.pass), [m.t, H - m.b]).padding(0.35);
+    const x = d3.scaleLinear([0, d3.max(rows, r => +r.tasks) || 1], [m.l, W - m.r]);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('rect.bg').data(rows).join('rect').attr('x', m.l).attr('y', r => y(r.pass)).attr('height', y.bandwidth()).attr('width', r => x(+r.tasks) - m.l).attr('rx', 4).attr('fill', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('rect.v').data(rows).join('rect').attr('x', m.l).attr('y', r => y(r.pass)).attr('height', y.bandwidth()).attr('width', r => Math.max(0, x(+r.passed) - m.l)).attr('rx', 4).attr('fill', (r, i) => dash.colors[i]);
+    svg.append('g').selectAll('text').data(rows).join('text').attr('x', m.l - 8).attr('y', r => y(r.pass) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').attr('font-size', 'var(--cds-font-size-caption)').text(r => r.pass === 'fresh' ? 'Empty library' : 'Learned library');
+    svg.append('g').selectAll('text').data(rows).join('text').attr('x', r => x(+r.tasks) + 8).attr('y', r => y(r.pass) + y.bandwidth() / 2).attr('dy', '0.35em').attr('fill', 'var(--color-fg-muted)').attr('font-size', 'var(--cds-font-size-caption)').text(r => `${r.passed}/${r.tasks} · ${fmt(r.llm_seconds)} s thinking`);
+  }
+
+  function drawLlmTable() {
+    const tb = S('#table-llm tbody'); const d = dash.data('llm_ab'); tb.replaceChildren();
+    if (d.status !== 'ok') return;
+    for (const r of d.data) { const tr = document.createElement('tr');
+      const cells = [r.key, r.task, null, r.attempts, r.llm_seconds, r.game_seconds, r.used_library || '—', r.saved_as || '—'];
+      cells.forEach((v, i) => { const td = document.createElement('td'); if (i === 2) { const s = document.createElement('span'); s.className = 'chip ' + (r.passed ? 'ok' : 'bad'); s.textContent = r.passed ? 'yes' : 'no'; td.appendChild(s); } else { td.textContent = v; } if ([3, 4, 5].includes(i)) td.className = 'num'; tr.appendChild(td); });
+      tb.appendChild(tr); }
+  }
+
+  function drawFindings() {
+    const tb = S('#table-findings tbody'); const d = dash.data('findings'); tb.replaceChildren();
+    if (d.status !== 'ok') return;
+    for (const r of d.data) { const tr = document.createElement('tr');
+      for (const k of ['id', 'found_by', 'finding', 'fix', 'effect', 'commit']) { const td = document.createElement('td'); td.textContent = r[k]; if (k === 'id' || k === 'commit') td.className = 'num'; tr.appendChild(td); }
+      tb.appendChild(tr); }
+  }
+
+  const fill = () => document.querySelectorAll('[data-source][data-field]:not(th)').forEach(el => {
+    const d = dash.data(el.dataset.source); if (d.status !== 'ok') return;
+    const w = el.dataset.where; let row = d.data[0];
+    if (w) { const [k, v] = w.split('='); row = d.data.find(r => String(r[k]) === decodeURIComponent(v)); }
+    if (row && row[el.dataset.field] !== undefined) el.textContent = fmt(row[el.dataset.field]);
+  });
+
+  dash.onData(() => { drawRuns(); drawSurvival(); drawNav(); drawLlm(); drawLlmTable(); drawFindings(); fill(); });
+})();
+</script>
