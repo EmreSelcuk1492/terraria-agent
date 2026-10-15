@@ -99,7 +99,7 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path) -> Result:
         bridge.set_guard(True)
         bridge.set_freeze(False)
         bridge.set_background(True)
-        setup = {"at": "spawn", "clear": True, "natural_spawns": False, **sc.setup}
+        setup = {"arena": True, "clear": True, "natural_spawns": False, **sc.setup}
         r = bridge._post("/scenario", setup)
         if not r.get("ok"):
             raise BridgeError(r.get("error", "scenario setup failed"))
@@ -112,7 +112,8 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path) -> Result:
 
             def call(name: str, args: dict[str, Any]) -> tuple[bool, str]:
                 ok, msg = real_call(name, args)
-                calls.append(f"{time.time() - t0:5.1f}s {'ok ' if ok else 'ERR'} {name} -> {msg[:140]}")
+                guard = msg[msg.find(" [guard:"):] if " [guard:" in msg else ""  # appended last: keep it
+                calls.append(f"{time.time() - t0:5.1f}s {'ok ' if ok else 'ERR'} {name} -> {msg[:160]}{' ...' + guard if guard and len(msg) > 160 else ''}")
                 return ok, msg
 
             d.call = call

@@ -90,6 +90,24 @@ namespace TerrariaAgentBridge
             p.selectedItem = slot;
         }
 
+        /// <summary>
+        /// How close (in tiles) the weapon has to be to its target. Shortswords "shoot" a 1-2 tile stab projectile, so
+        /// item.shoot > 0 doesn't mean ranged: treating it as 14 tiles kept every fight at arm's length plus 12, with
+        /// zero kills in runs 1-5 and the first scenario suite.
+        /// </summary>
+        public static float WeaponReach(Item w)
+        {
+            if (w.useStyle == ItemUseStyleID.Rapier) return 1.8f;                      // shortswords
+            if (w.DamageType == DamageClass.Melee || w.DamageType == DamageClass.MeleeNoSpeed)
+            {
+                if (ItemID.Sets.Yoyo[w.type]) return 7f;
+                if (w.shoot <= 0 || !w.noMelee && w.useStyle == ItemUseStyleID.Swing) return 2.5f; // swung blades (beam ones too)
+                if (w.noMelee && w.useStyle == ItemUseStyleID.Shoot) return 3.5f;      // spears
+                return 8f;                                                               // boomerangs, flails
+            }
+            return 14f;                                                                  // ranged, magic, thrown, summons
+        }
+
         public static void ConsumeOne(Player p, int slot)
         {
             Item item = p.inventory[slot];

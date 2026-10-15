@@ -208,6 +208,7 @@ namespace TerrariaAgentBridge
                     ["max_hp"] = n.lifeMax,
                     ["hostile"] = !n.friendly && !n.townNPC && n.damage > 0,
                     ["boss"] = n.boss,
+                    ["flying"] = n.noGravity,
                     ["distance"] = (int)dist,
                 });
             }

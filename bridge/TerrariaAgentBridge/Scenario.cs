@@ -10,7 +10,7 @@ namespace TerrariaAgentBridge
     /// <summary>
     /// POST /scenario: put the world in a known state for a short, repeatable test (agent/terraria_agent/scenarios.py).
     /// All fields optional:
-    ///   {"at": "spawn" | [x, y], "clear": true, "natural_spawns": false, "time": "dawn|noon|dusk|midnight",
+    ///   {"arena": true | "at": "spawn" | [x, y], "clear": true, "natural_spawns": false, "time": "dawn|noon|dusk|midnight",
     ///    "hp": 40, "give": {"LesserHealingPotion": 3}, "take": ["LesserHealingPotion"],
     ///    "spawn": [{"npc": "Zombie", "dx": 3, "dy": 0}]}
     /// dx/dy are tiles from the player after the move. Runs on the main thread; returns what it did.
@@ -30,7 +30,15 @@ namespace TerrariaAgentBridge
             if (!r.TryGetProperty("clear", out var clear) || clear.ValueKind != JsonValueKind.False)
                 did["cleared"] = Sandbox.ClearHostiles();
 
-            if (r.TryGetProperty("at", out var at))
+            if (r.TryGetProperty("arena", out var arena) && arena.ValueKind == JsonValueKind.True)
+            {
+                var (ax, ag) = BuildArena();
+                p.Teleport(new Vector2(ax * 16 + 8 - p.width / 2f, ag * 16 - p.height), TeleportationStyleID.DebugTeleport);
+                p.velocity = Vector2.Zero;
+                p.fallStart = (int)(p.position.Y / 16f);
+                did["arena"] = new[] { ax, ag };
+            }
+            else if (r.TryGetProperty("at", out var at))
             {
                 int tx, ty;
                 if (at.ValueKind == JsonValueKind.Array) { tx = at[0].GetInt32(); ty = at[1].GetInt32(); }
@@ -84,6 +92,42 @@ namespace TerrariaAgentBridge
                 }
             did["spawned"] = spawned;
             return did;
+        }
+
+        private const int ArenaHalf = 20, ArenaHeight = 12;
+
+        /// <summary>
+        /// A flat, empty strip 80 tiles east of spawn, rebuilt on every call: everything above the ground row is
+        /// removed (trees, houses, liquids), and the ground is three rows of dirt, so every scenario fights on the
+        /// same terrain no matter what the world (or the last run) did to it. Returns centre column and ground row.
+        /// </summary>
+        public static (int x, int ground) BuildArena()
+        {
+            int x = Math.Clamp(Main.spawnTileX + 80, ArenaHalf + 50, Main.maxTilesX - ArenaHalf - 50);
+            int g = 50;
+            while (g < Main.worldSurface && !Game.Solid(x, g)) g++;
+            for (int i = x - ArenaHalf - 1; i <= x + ArenaHalf + 1; i++)
+            {
+                for (int j = g - ArenaHeight; j < g; j++)
+                {
+                    Tile t = Framing.GetTileSafely(i, j);
+                    if (t.HasTile) WorldGen.KillTile(i, j, fail: false, effectOnly: false, noItem: true);
+                    t = Framing.GetTileSafely(i, j);
+                    t.LiquidAmount = 0;
+                    t.WallType = 0;
+                }
+                for (int j = g; j < g + 3; j++)
+                {
+                    Tile t = Framing.GetTileSafely(i, j);
+                    if (t.HasTile && t.TileType != TileID.Dirt) WorldGen.KillTile(i, j, fail: false, effectOnly: false, noItem: true);
+                    if (!Framing.GetTileSafely(i, j).HasTile) WorldGen.PlaceTile(i, j, TileID.Dirt, mute: true, forced: true);
+                    t = Framing.GetTileSafely(i, j);
+                    t.LiquidAmount = 0;
+                }
+            }
+            foreach (Item it in Main.item) // drops from earlier fights, so pickups don't vary between attempts
+                if (it.active && Math.Abs(it.Center.X / 16f - x) < ArenaHalf + 4 && Math.Abs(it.Center.Y / 16f - g) < ArenaHeight) it.active = false;
+            return (x, g);
         }
 
         public static bool SetTime(string at)

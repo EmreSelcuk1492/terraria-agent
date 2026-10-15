@@ -363,7 +363,9 @@ class Director:
             # Standing still is how the first real run died 8 times at spawn: `wait` refuses with hostiles near,
             # so the character took hits without swinging. With an enemy on top of us, swing (desperate: the attack
             # skill otherwise refuses below 30%); with room to move, dig in and regenerate under a sealed roof.
-            near = c.hostiles(3)
+            # Fliers (Demon Eyes) dodge a shortsword between swoops: a desperate fight with one lost the scenario
+            # suite's only run; a sealed bunker roof stops them completely.
+            near = [n for n in c.hostiles(3) if not n.get("flying")]
             if near and c.hp_frac < 0.35:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): fighting off {near[0]['name']}.", chat=False)
                 ok, _ = self.call("attack", {"target": "nearest", "max_kills": 2, "desperate": True})

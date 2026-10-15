@@ -173,8 +173,9 @@ namespace TerrariaAgentBridge
         {
             if (!n.noGravity) return false;
             int slot = Game.BestSlot(p, i => i.damage > 0 && i.pick == 0 && i.axe == 0 && i.hammer == 0 && i.ammo == 0 && !i.consumable ? i.damage : 0);
-            if (slot >= 0 && (p.inventory[slot].DamageType != DamageClass.Melee || p.inventory[slot].shoot > 0)) return false; // ranged/magic/thrown reach it
-            return (p.Center - n.Center).Length() / 16f > 3f;
+            float reach = slot >= 0 ? Game.WeaponReach(p.inventory[slot]) : 2f;
+            if (reach >= 7f) return false; // ranged, magic, yoyos reach it
+            return (p.Center - n.Center).Length() / 16f > reach + 1.5f;
         }
 
         /// <summary>Nearest enemy within `range` tiles that has a clear line to the player (not behind blocks).</summary>

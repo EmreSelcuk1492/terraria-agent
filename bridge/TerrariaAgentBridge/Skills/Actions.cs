@@ -189,7 +189,7 @@ namespace TerrariaAgentBridge.Skills
             Item weapon = p.inventory[p.selectedItem];
 
             NPC npc = Main.npc[npcIndex];
-            float range = weapon.DamageType == DamageClass.Melee && weapon.shoot <= 0 ? 2.5f : 14f;
+            float range = Game.WeaponReach(weapon);
             int dx = (int)((npc.Center.X - p.Center.X) / 16f);
             int dy = (int)((npc.Center.Y - p.Center.Y) / 16f);
 

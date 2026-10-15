@@ -120,3 +120,16 @@ def test_scenario_suite_against_mock(world_and_bridge, tmp_path):
     assert all(r.passed for r in results), [(r.scenario, r.failures, r.error) for r in results]
     assert "4/4 passed" in (tmp_path / "report.md").read_text()
     second.shutdown()
+
+
+def test_low_health_flier_digs_in_instead_of_fighting(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.player["hp"] = 20
+    world.npcs = [{"name": "Demon Eye", "x": world.player["x"] + 1, "y": world.player["y"] - 2, "hp": 60, "max_hp": 60,
+                   "hostile": True, "boss": False, "flying": True}]
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = []
+    real = d.call
+    d.call = lambda name, args: (calls.append(name), real(name, args))[1]
+    assert d.safety(d.observe())
+    assert calls[0] == "dig_in"
