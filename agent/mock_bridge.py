@@ -26,8 +26,19 @@ RECIPES = {
     "WoodenDoor": ({"Wood": 6}, "WorkBenches", 1),
     "WoodenChair": ({"Wood": 4}, "WorkBenches", 1),
     "WoodenTable": ({"Wood": 8}, "WorkBenches", 1),
+    "StoneWall": ({"StoneBlock": 1}, "WorkBenches", 4),
+    "LeadBar": ({"LeadOre": 3}, "Furnaces", 1),
+    "LeadAnvil": ({"LeadBar": 5}, "WorkBenches", 1),
+    "LeadPickaxe": ({"LeadBar": 10, "Wood": 3}, "Anvils", 1),
+    "LeadBroadsword": ({"LeadBar": 8}, "Anvils", 1),
+    "CopperHelmet": ({"CopperBar": 12}, "Anvils", 1),
+    "CopperChainmail": ({"CopperBar": 20}, "Anvils", 1),
+    "CopperGreaves": ({"CopperBar": 16}, "Anvils", 1),
+    "Chest": ({"Wood": 8, "LeadBar": 2}, "WorkBenches", 1),
 }
-PLACES = {"WorkBench": "WorkBenches", "Furnace": "Furnaces", "WoodenChair": "Chairs", "WoodenTable": "Tables", "Wood": "WoodBlock", "DirtBlock": "Dirt", "StoneBlock": "Stone", "WoodPlatform": "Platforms"}
+WORLD_ORES = ("Copper", "Lead")  # this mock world has copper and lead, not tin or iron
+ARMOR = ("Helmet", "Chainmail", "Greaves")
+PLACES = {"WorkBench": "WorkBenches", "Furnace": "Furnaces", "LeadAnvil": "Anvils", "Chest": "Containers", "WoodenChair": "Chairs", "WoodenTable": "Tables", "Wood": "WoodBlock", "DirtBlock": "Dirt", "StoneBlock": "Stone", "WoodPlatform": "Platforms"}
 DROPS = {"Trees": ("Wood", 8), "Dirt": ("DirtBlock", 1), "Stone": ("StoneBlock", 1), "CopperOre": ("CopperOre", 1)}
 
 
@@ -50,6 +61,11 @@ class World:
         self.rooms: list[tuple[int, int, int, int]] = []  # x1, y1, x2, y2 interior bounds
         self.freeze = False
         self.ticks = 0
+        self.equipment: list[str] = []
+        self.houses: list[tuple[int, int, int]] = []
+        self.looted = False
+        self.said: list[str] = []
+        self.saves = 0
 
     # ---- observation -----------------------------------------------------------------
 
@@ -96,14 +112,23 @@ class World:
         return {
             "ok": True,
             "player": self.summary(),
-            "world": {"time": "08:30", "is_day": True, "blood_moon": False, "biomes": ["forest", "surface"], "spawn": [50, GROUND_Y - 2],
-                      "surface_y": GROUND_Y + 10, "size": [200, 300], "bosses_defeated": []},
+            "world": {**self.clock(), "blood_moon": False, "biomes": ["forest", "surface"], "spawn": [50, GROUND_Y - 2],
+                      "surface_y": GROUND_Y + 10, "rock_layer_y": GROUND_Y + 40, "size": [200, 300], "bosses_defeated": [],
+                      "town_npcs": ["Guide" + (" (home)" if self.houses else " (homeless)")], "max_life": self.player["max_hp"],
+                      "defense": 2 * len(self.equipment)},
+            "equipment": list(self.equipment),
             "inventory": self.inv_list(),
             "map": {"origin": [ox, oy], "legend": "@ you, # solid, T tree, $ ore, + furniture, E hostile, . air", "rows": rows},
             "npcs": [{**n, "distance": abs(n["x"] - px)} for n in self.npcs],
             "nearby": nearby_out,
             "craftable_now": self.craftable(),
         }
+
+    def clock(self) -> dict[str, Any]:
+        """Day 8:30 at tick 0; a day is 54000 ticks from 4:30, a night 32400."""
+        t = (self.ticks + 4 * 3600) % (54000 + 32400)  # ticks since 4:30 am
+        hours = 4.5 + t / 3600
+        return {"time": f"{int(hours) % 24:02d}:{int(hours % 1 * 60):02d}", "is_day": t < 54000}
 
     # ---- skills ------------------------------------------------------------------------
 
@@ -138,6 +163,10 @@ class World:
             while self.tiles.get((x, yy)) == "Trees":
                 del self.tiles[(x, yy)]
                 yy -= 1
+            # forests are big: a new tree grows further out
+            nx = 100 + (len(self.tiles) * 7) % 90
+            for k in range(GROUND_Y - 8, GROUND_Y):
+                self.tiles[(nx, k)] = "Trees"
             self.inventory["Wood"] = self.inventory.get("Wood", 0) + 8
             self.inventory["Acorn"] = self.inventory.get("Acorn", 0) + 1
         else:
@@ -208,6 +237,9 @@ class World:
     def s_use_item(self, item: str):
         if self.inventory.get(item, 0) <= 0:
             return False, f"no '{item}' in inventory", 1
+        if item in ("LesserHealingPotion", "HealingPotion", "Mushroom"):
+            self.inventory[item] -= 1
+            self.player["hp"] = min(self.player["max_hp"], self.player["hp"] + 50)
         return True, f"used {item}", 20
 
     def s_build_room(self, x: int, y: int, width: int = 10, height: int = 6, block: str = "Wood", wall: str = "WoodWall", door: str = "WoodenDoor"):
@@ -260,10 +292,20 @@ class World:
             if depth > 5:
                 return False, f"recipe chain for {item} is too deep", ticks
             if item not in RECIPES:
-                tile = {"Wood": "Trees", "StoneBlock": "Stone", "DirtBlock": "Dirt", "CopperOre": "CopperOre"}.get(item)
+                if item.endswith("Ore"):
+                    ok, msg, t = self.s_mine_vein(item[:-3], count - have)
+                    ticks += t
+                    if not ok:
+                        return False, f"getting {count} {item}: {msg}", ticks
+                    continue
+                if item == "Gel":
+                    self.inventory["Gel"] = have + 2
+                    ticks += 300
+                    continue
+                tile = {"Wood": "Trees", "StoneBlock": "Stone", "DirtBlock": "Dirt"}.get(item)
                 if tile is None:
                     return False, f"{item} can't be crafted or mined; it comes from chests, enemies or shops", ticks
-                ok, msg, t = self.s_mine_nearest(tile, 1)
+                ok, msg, t = self.s_mine_nearest(tile, min(20, count - have) if tile != "Trees" else 1)
                 ticks += t
                 if not ok:
                     return False, f"getting {count} {item}: {msg}", ticks
@@ -288,23 +330,82 @@ class World:
                 return False, f"could not craft {item}: {msg}", ticks
         return False, f"gave up on {item}", ticks
 
-    def s_build_house(self, x: int | None = None, y: int | None = None):
-        x = self.player["x"] - 5 if x is None else x
+    def s_build_house(self, x: int | None = None, y: int | None = None, material: str = "wood", width: int = 10, height: int = 6,
+                      extras: list[str] | None = None, new_house: bool = False):
+        stone = material == "stone"
+        w = max(10, min(16, width))
+        if x is None:
+            x = (self.houses[-1][0] + self.houses[-1][2] + 2) if (new_house and self.houses) else (self.houses[-1][0] if self.houses else self.player["x"] - 5)
         y = GROUND_Y if y is None else y
         ticks = 0
-        for item, n in (("WoodWall", 32), ("WoodenDoor", 1), ("WoodenChair", 1), ("WoodenTable", 1), ("WorkBench", 1), ("Wood", 13)):
+        needs = [("StoneWall" if stone else "WoodWall", 40), ("WoodenDoor", 1), ("WoodenChair", 1), ("WoodenTable", 1), ("WorkBench", 1)]
+        needs += [(e, 1) for e in (extras or [])]
+        needs += [("StoneBlock" if stone else "Wood", 20)]
+        for item, n in needs:
             ok, msg, t = self.s_obtain(item, n)
             ticks += t
             if not ok:
                 return False, f"{msg} (house site ({x},{y}); call build_house again to resume)", ticks
-        ok, msg, t = self.s_build_room(x, y)
-        ticks += t
-        if not ok:
-            return False, msg, ticks
-        for item, dx in (("WorkBench", 1), ("WoodenTable", 4), ("WoodenChair", 7)):
-            ticks += self.s_place(item, x + dx, y - 1)[2]
-        ok, msg, t = self.s_check_house(x + 1, y - 4)
-        return ok, f"{msg} House at floor row y={y}, walls x {x}..{x + 9}.", ticks + t
+        for item, n in needs:
+            self.inventory[item] -= n
+        lit = self.inventory.get("Torch", 0) > 0
+        if lit:
+            self.inventory["Torch"] -= 1
+        if not any(h[0] == x for h in self.houses):
+            self.houses.append((x, y, w))
+        self.rooms.append((x + 1, y - height + 2, x + w - 2, y - 1))
+        valid = " NPC-VALID: valid NPC house (84 tiles)." if lit else " Not NPC-valid yet: missing light source (Torch)."
+        mat = "StoneBlock" if stone else "Wood"
+        return True, f"HOUSE OK: enclosed, walls, door, chair, table, work bench. interior 50 tiles. Has light.{valid} House at floor row y={y}, walls x {x}..{x + w - 1}, {mat}.", ticks + 1800
+
+    def s_tunnel_to(self, x: int, y: int, tolerance: int = 2):
+        if y > GROUND_Y + 200:
+            return False, "lava ahead at that depth; stopped", 300
+        dist = abs(x - self.player["x"]) + abs(y - self.player["y"])
+        self.player["x"], self.player["y"] = x, y
+        return True, f"tunneled to ({x},{y})", dist * 20
+
+    def s_mine_vein(self, target: str = "ore", count: int = 30, radius: int = 50):
+        metal = WORLD_ORES[0] if target == "ore" else target
+        if metal not in WORLD_ORES:
+            return False, f"no {metal} ore within {radius} tiles", 120
+        self.player["y"] = max(self.player["y"], GROUND_Y + 15)
+        self.inventory[f"{metal}Ore"] = self.inventory.get(f"{metal}Ore", 0) + count
+        return True, f"got {count}/{count} ore from 2 vein(s): +{count} {metal}Ore", count * 40
+
+    def s_collect_life_crystals(self, max: int = 3, radius: int = 80):
+        if self.player["y"] < GROUND_Y + 30:
+            return False, f"no life crystals within {radius} tiles; they generate below y={GROUND_Y + 30}; dig down first", 60
+        got = min(max, (400 - self.player["max_hp"]) // 20, 2)
+        self.player["max_hp"] += 20 * got
+        self.player["hp"] += 20 * got
+        return (got > 0), f"+{20 * got} max life (now {self.player['max_hp']}/400)", 1200
+
+    def s_return_to_surface(self):
+        self.player["y"] = GROUND_Y - 2
+        return True, "back on the surface", 600
+
+    def s_equip_best(self):
+        worn = [k for k in list(self.inventory) if k.endswith(ARMOR) and self.inventory[k] > 0]
+        for k in worn:
+            self.inventory[k] -= 1
+            self.equipment.append(k)
+        return True, ("equipped " + ", ".join(worn)) if worn else "already wearing the best gear", 1
+
+    def s_loot_chests(self, radius: int = 60, max: int = 10):
+        if self.looted:
+            return False, f"no unlooted chests within {radius} tiles", 30
+        self.looted = True
+        for k, v in (("LesserHealingPotion", 4), ("SilverCoin", 75), ("Shuriken", 50)):
+            self.inventory[k] = self.inventory.get(k, 0) + v
+        return True, "looted 2 chests: 4 LesserHealingPotion, 75 SilverCoin, 50 Shuriken", 900
+
+    def s_store_items(self, keep: list[str] | None = None):
+        moved = self.inventory.pop("Shuriken", 0)
+        return True, f"stored {moved} Shuriken" if moved else "nothing to store", 60
+
+    def s_set_spawn(self):
+        return False, "no Bed within 30 tiles or in inventory: craft one at a Sawmill: 15 Wood + 5 Silk", 1
 
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)
@@ -325,7 +426,7 @@ def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPSe
         def do_GET(self) -> None:
             with world.lock:
                 if self.path == "/health":
-                    self._send({"ok": True, "version": "mock", "in_world": True, "freeze": world.freeze})
+                    self._send({"ok": True, "version": "mock", "in_world": True, "freeze": world.freeze, "world": "Mock World", "player": "Bot"})
                 elif self.path == "/state":
                     self._send(world.state())
                 else:
@@ -340,6 +441,12 @@ def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPSe
                 elif self.path == "/config":
                     world.freeze = bool(body.get("freeze", world.freeze))
                     self._send({"ok": True, "freeze": world.freeze})
+                elif self.path == "/say":
+                    world.said.append(body.get("text", ""))
+                    self._send({"ok": True})
+                elif self.path == "/save":
+                    world.saves += 1
+                    self._send({"ok": True})
                 elif self.path == "/cancel":
                     self._send({"ok": True})
                 else:

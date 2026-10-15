@@ -30,6 +30,8 @@ namespace TerrariaAgentBridge
                 ["player"] = PlayerSummary(p),
                 ["world"] = World(p),
                 ["inventory"] = Inventory(p),
+                // Worn armor and accessories (armor[0..9]), by internal name.
+                ["equipment"] = p.armor.Take(10).Where(i => !i.IsAir).Select(i => Game.ItemName(i.type)).ToList(),
                 ["map"] = new Dictionary<string, object>
                 {
                     ["origin"] = new[] { px - MapHalfWidth, py - MapHalfHeight },

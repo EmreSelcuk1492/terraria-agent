@@ -49,5 +49,16 @@ class BridgeClient:
         """Keep the game running while its window is in the background (single player pauses otherwise)."""
         return self._post("/config", {"background": on})
 
+    def say(self, text: str) -> dict[str, Any]:
+        """Show a line in the in-game chat."""
+        return self._post("/say", {"text": text})
+
+    def save(self) -> dict[str, Any]:
+        return self._post("/save", {})
+
+    def set_guard(self, on: bool) -> dict[str, Any]:
+        """Bodyguard: pause a skill to fight off enemies (and drink potions) instead of ending it on a hit."""
+        return self._post("/config", {"guard": on})
+
     def close(self) -> None:
         self._http.close()

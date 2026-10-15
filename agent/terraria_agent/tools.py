@@ -113,17 +113,65 @@ TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "build_house",
-        "The whole house goal in one call: picks a flat spot near you (or uses x, y = left wall column, floor row), "
-        "gathers and crafts everything, builds a 10x6 room, places a work bench, table and chair (and a torch if you "
-        "have one), then runs check_house. Takes a few minutes of game time. If interrupted (an enemy hits you), "
-        "deal with the threat and call it again: it resumes on the same site. Pass null for x and y to auto-pick.",
-        {"x": {"type": ["integer", "null"]}, "y": {"type": ["integer", "null"]}},
+        "A whole furnished house in one call: picks a flat spot near you (or x, y = left wall column, floor row), "
+        "gathers and crafts everything (digs stone itself for material 'stone'), builds the room, places a work bench, "
+        "table, chair, a torch, plus `extras` (Furnace, Chest, Bed, IronAnvil, LeadAnvil, Sawmill, Loom; about two fit), "
+        "then runs check_house incl. Terraria's own NPC-housing check. width 10-16, height 6-9. new_house=true builds "
+        "another house next to the previous ones; false resumes the last site after an interruption. "
+        "Pass null for x and y to auto-pick.",
+        {"x": {"type": ["integer", "null"]}, "y": {"type": ["integer", "null"]},
+         "material": {"type": "string", "enum": ["wood", "stone"]}, "width": _INT, "height": _INT,
+         "extras": {"type": "array", "items": _STR}, "new_house": {"type": "boolean"}},
     ),
     _tool(
         "check_house",
         "Inspect the room containing tile (x, y) (pick an air tile inside, e.g. one above the floor). Reports whether it is "
         "enclosed, fully walled, has a door, a chair, a table and a work bench, and exactly what is missing.",
         {"x": _INT, "y": _INT},
+    ),
+    _tool(
+        "tunnel_to",
+        "Dig a walkable tunnel (with stairs) to a tile that move_to can't reach, e.g. ore or a chest underground. "
+        "Stops before lava. Places torches underground when you carry some.",
+        {"x": _INT, "y": _INT, "tolerance": _INT},
+    ),
+    _tool(
+        "mine_vein",
+        "Find the nearest ore vein (target: Copper, Tin, Iron, Lead, Silver, Tungsten, Gold, Platinum, or 'ore'), "
+        "tunnel to it and mine the whole vein, then the next, until `count` ore are gained or none are left in radius.",
+        {"target": _STR, "count": _INT, "radius": _INT},
+    ),
+    _tool(
+        "collect_life_crystals",
+        "Tunnel to the nearest Life Crystals, break them and use them (+20 max life each, up to 400). They are deep "
+        "underground; dig down first if none are in range.",
+        {"max": _INT, "radius": _INT},
+    ),
+    _tool(
+        "return_to_surface",
+        "Get back up to the surface from underground (climbs out, builds pillars/stairs, or uses a Magic Mirror).",
+        {},
+    ),
+    _tool(
+        "equip_best",
+        "Put on the best armor and accessories you carry and move your best weapon, pickaxe and axe into the hotbar.",
+        {},
+    ),
+    _tool(
+        "loot_chests",
+        "Walk to unlooted chests within `radius` tiles (not your own near spawn) and take everything in them.",
+        {"radius": _INT, "max": _INT},
+    ),
+    _tool(
+        "store_items",
+        "Put loot and spare materials into the chest(s) near you (places a Chest from your inventory if none). Never "
+        "stores tools, weapons, armor, torches, potions, wood, stone, ore, bars, or anything listed in `keep`.",
+        {"keep": {"type": "array", "items": _STR}},
+    ),
+    _tool(
+        "set_spawn",
+        "Set your respawn point at a Bed in a valid house nearby (places one from your inventory if needed).",
+        {},
     ),
     _tool(
         "remember",
@@ -134,7 +182,8 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
-               "build_house", "check_house"}
+               "build_house", "check_house", "tunnel_to", "mine_vein", "collect_life_crystals", "return_to_surface",
+               "equip_best", "loot_chests", "store_items", "set_spawn"}
 
 
 class ToolExecutor:
