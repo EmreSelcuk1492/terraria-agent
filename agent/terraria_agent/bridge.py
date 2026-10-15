@@ -72,6 +72,10 @@ class BridgeClient:
     def save(self) -> dict[str, Any]:
         return self._post("/save", {})
 
+    def set_sandbox(self, peaceful: bool, god: bool) -> dict[str, Any]:
+        """Benchmark switches: peaceful = no hostile spawns (and clears the ones there), god = every hit dodged."""
+        return self._post("/config", {"peaceful": peaceful, "god": god})
+
     def set_guard(self, on: bool) -> dict[str, Any]:
         """Bodyguard: pause a skill to fight off enemies (and drink potions) instead of ending it on a hit."""
         return self._post("/config", {"guard": on})

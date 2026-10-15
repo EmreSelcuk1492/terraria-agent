@@ -280,6 +280,7 @@ class Director:
         self.calls = 0
         self.last_potion = 0.0
         self.dead = False
+        self.track = "survival (enemies and damage on)"
         self.roof: list[tuple[int, int]] = []  # bunker roof tiles from the last dig_in, mined on the way out
 
     # -- io
@@ -350,7 +351,9 @@ class Director:
             time.sleep(3)
             return True
         self.dead = False
-        if c.hp_frac < 0.35:
+        # Danger starts at half health with enemies around (the mod hands control back there too): at 35% the
+        # escape came too late in run 4, three deaths in two minutes with a zombie already on top.
+        if c.hp_frac < 0.35 or (c.hp_frac < 0.5 and c.hostiles(12)):
             potion = next((i for i in ("LesserHealingPotion", "HealingPotion", "Mushroom") if c.has(i)), None)
             if potion and time.time() - self.last_potion > 60:  # potion sickness: one per minute
                 self.last_potion = time.time()
@@ -361,7 +364,7 @@ class Director:
             # so the character took hits without swinging. With an enemy on top of us, swing (desperate: the attack
             # skill otherwise refuses below 30%); with room to move, dig in and regenerate under a sealed roof.
             near = c.hostiles(3)
-            if near:
+            if near and c.hp_frac < 0.35:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): fighting off {near[0]['name']}.", chat=False)
                 ok, _ = self.call("attack", {"target": "nearest", "max_kills": 2, "desperate": True})
                 if not ok:  # unreachable or no weapon: the bunker is the only other way out
@@ -499,6 +502,7 @@ class Director:
         self.bridge.set_guard(True)
         self.bridge.set_freeze(False)
         self.journal_path.write_text(f"# Director journal: {world}\n\nStarted {time.strftime('%Y-%m-%d %H:%M')}.\n\n")
+        self.note(f"Track: {self.track}.")
         self.note(f"Director online in '{world}'. Plan: {len(self.plan)} steps from first wood to a small village.", chat=True)
         deadline = self.started + hours * 3600
         idle = 0
@@ -628,11 +632,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--quiet-chat", action="store_true", help="don't narrate in the in-game chat")
     ap.add_argument("--start-at", choices=["dawn", "noon", "dusk", "midnight"],
                     help="testing: set the time of day before starting (sim runs start at dawn for comparable results)")
+    ap.add_argument("--peaceful", action="store_true",
+                    help="build track: no hostile spawns and no damage, so the score measures the plan, not combat")
+    ap.add_argument("--runs-dir", type=Path, default=ROOT / "runs",
+                    help="journal + memo folder (one per game instance, so parallel worlds with one name don't collide)")
     a = ap.parse_args(argv)
     bridge = BridgeClient(a.bridge, skill_timeout=1800)  # longer than any skill's in-game timeout (build_house: 1200s)
     if a.start_at:
         bridge.set_time(a.start_at)
-    Director(bridge, make_advisor(a.advisor, a.model), say_in_game=not a.quiet_chat).run(hours=a.hours)
+    bridge.set_sandbox(a.peaceful, a.peaceful)  # always set: the mod keeps the last value until the game restarts
+    d = Director(bridge, make_advisor(a.advisor, a.model), memo_dir=a.runs_dir, say_in_game=not a.quiet_chat)
+    if a.peaceful:
+        d.track = "build (peaceful: no hostile spawns, no damage)"
+    d.run(hours=a.hours)
     return 0
 
 

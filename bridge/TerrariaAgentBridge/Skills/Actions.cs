@@ -209,7 +209,7 @@ namespace TerrariaAgentBridge.Skills
             for (int i = 0; i < Main.maxNPCs; i++)
             {
                 NPC n = Main.npc[i];
-                if (!n.active || n.friendly || n.townNPC || n.damage <= 0 || n.dontTakeDamage) continue;
+                if (!n.active || n.friendly || n.townNPC || n.damage <= 0 || n.dontTakeDamage || SkillRunner.OutOfReachFlier(p, n)) continue;
                 if (target != "nearest" && !n.FullName.Contains(target, StringComparison.OrdinalIgnoreCase)) continue;
                 float d = (n.Center - p.Center).Length() / 16f;
                 if (d < bestD) { bestD = d; best = i; }

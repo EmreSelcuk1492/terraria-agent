@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Terraria;
+using Terraria.ModLoader;
 using TerrariaAgentBridge.Skills;
 
 namespace TerrariaAgentBridge
@@ -118,7 +119,7 @@ namespace TerrariaAgentBridge
             current.Ticks++;
             if (p.dead)
                 current.ForceFail($"you are dead; respawning in about {p.respawnTimer / 60 + 1}s at spawn. Call wait, then observe.");
-            else if (Guard && hurt && !current.Survival && p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p))
+            else if (Guard && hurt && !current.Survival && LowFor(p) && !TryHeal(p))
                 current.ForceFail($"LOW HEALTH {p.statLife}/{p.statLifeMax2} and no healing potion. {Observation.ThreatSummary(p)} Get to safety (home, or away from enemies) and wait to regenerate before continuing.");
             else if (!Guard && current.InterruptOnDamage && hurt)
                 current.ForceFail($"INTERRUPTED: took {lastLife - p.statLife} damage (hp {p.statLife}/{p.statLifeMax2}). {Observation.ThreatSummary(p)} Fight (attack), move away, or heal before continuing.");
@@ -148,17 +149,38 @@ namespace TerrariaAgentBridge
             if (current is Attack || --guardCooldown > 0 || guardTicksUsed >= MaxGuardTicks) return false;
             NPC threat = NearestThreat(p, hurt ? 12 : GuardRange);
             if (threat == null) return false;
-            if (p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p)) return false; // too weak to fight: the low-health check decides
-            defense = new Attack("nearest", 1);
+            // Too weak to fight: the low-health check hands control back. Not while escaping (dig_in): there the
+            // enemy gets free hits for the whole dig unless the guard swings.
+            if (!current.Survival && LowFor(p) && !TryHeal(p)) return false;
+            defense = new Attack("nearest", 1, desperate: current.Survival);
             defenseTarget = threat.FullName;
             defenseTicks = 0;
             return true;
         }
 
+        /// <summary>
+        /// Too hurt to keep working: below 30%, or below 50% with an enemy within 12 tiles. Handing control back at 50%
+        /// leaves time to dig in; at 30% (run 4) a zombie was already on top and every escape died mid-way.
+        /// </summary>
+        public static bool LowFor(Player p) =>
+            p.statLife < p.statLifeMax2 * 0.3f || (p.statLife < p.statLifeMax2 * 0.5f && NearestThreat(p, 12) != null);
+
+        /// <summary>
+        /// A flier (Demon Eye) hovering out of a short melee weapon's reach. Chasing it is how the guard bled out in
+        /// run 4: the shortsword can't touch it until it swoops, so wait for the swoop instead.
+        /// </summary>
+        public static bool OutOfReachFlier(Player p, NPC n)
+        {
+            if (!n.noGravity) return false;
+            int slot = Game.BestSlot(p, i => i.damage > 0 && i.pick == 0 && i.axe == 0 && i.hammer == 0 && i.ammo == 0 && !i.consumable ? i.damage : 0);
+            if (slot >= 0 && (p.inventory[slot].DamageType != DamageClass.Melee || p.inventory[slot].shoot > 0)) return false; // ranged/magic/thrown reach it
+            return (p.Center - n.Center).Length() / 16f > 3f;
+        }
+
         /// <summary>Nearest enemy within `range` tiles that has a clear line to the player (not behind blocks).</summary>
         public static NPC NearestThreat(Player p, float range) => Main.npc
             .Where(n => n.active && !n.friendly && !n.townNPC && n.damage > 0 && n.lifeMax > 5 && !n.dontTakeDamage
-                        && (n.Center - p.Center).Length() / 16f <= range
+                        && (n.Center - p.Center).Length() / 16f <= range && !OutOfReachFlier(p, n)
                         && Collision.CanHit(p.position, p.width, p.height, n.position, n.width, n.height))
             .OrderBy(n => (n.Center - p.Center).LengthSquared())
             .FirstOrDefault();

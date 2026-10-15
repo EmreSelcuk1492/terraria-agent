@@ -231,7 +231,16 @@ namespace TerrariaAgentBridge
                         Background = bg.GetBoolean();
                     if (doc.RootElement.TryGetProperty("guard", out var guard))
                         SkillRunner.Guard = guard.GetBoolean();
-                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background, ["guard"] = SkillRunner.Guard };
+                    if (doc.RootElement.TryGetProperty("god", out var god))
+                        Sandbox.God = god.GetBoolean();
+                    int cleared = 0;
+                    if (doc.RootElement.TryGetProperty("peaceful", out var peaceful))
+                    {
+                        Sandbox.Peaceful = peaceful.GetBoolean();
+                        if (Sandbox.Peaceful && InWorld) cleared = (int)await OnMainThread(() => Sandbox.ClearHostiles());
+                    }
+                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background,
+                        ["guard"] = SkillRunner.Guard, ["peaceful"] = Sandbox.Peaceful, ["god"] = Sandbox.God, ["cleared"] = cleared };
                 }
 
                 case "POST /cancel":
