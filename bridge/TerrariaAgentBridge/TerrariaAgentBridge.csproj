@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- tModLoader.targets lives one folder up, in ModSources/. Symlink this folder into ModSources (see README). -->
+  <Import Project="..\tModLoader.targets" />
+  <PropertyGroup>
+    <AssemblyName>TerrariaAgentBridge</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

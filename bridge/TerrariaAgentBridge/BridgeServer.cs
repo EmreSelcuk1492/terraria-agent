@@ -1,0 +1,180 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Terraria;
+using Terraria.ModLoader;
+
+namespace TerrariaAgentBridge
+{
+    /// <summary>
+    /// Local HTTP server. Requests arrive on thread-pool threads; anything that touches
+    /// game state is queued and run on the main thread by BridgeSystem.UpdateUI.
+    ///
+    ///   GET  /health           -> { ok, version, in_world }
+    ///   GET  /state            -> observation (see Observation.cs)
+    ///   POST /skill  {name, args}  -> blocks until the skill finishes -> { ok, message, ticks, player, inventory }
+    ///   POST /cancel           -> stops the running skill
+    ///   POST /config {freeze}  -> freeze the world while no skill is running
+    /// </summary>
+    public static class BridgeServer
+    {
+        private static HttpListener listener;
+        private static CancellationTokenSource cts;
+        private static readonly ConcurrentQueue<(Func<object> work, TaskCompletionSource<object> done)> mainThreadQueue = new();
+
+        public static volatile bool FreezeWhileThinking;
+
+        public static void Start()
+        {
+            if (listener != null) return;
+            cts = new CancellationTokenSource();
+            listener = new HttpListener();
+            listener.Prefixes.Add($"http://127.0.0.1:{TerrariaAgentBridge.Port}/");
+            try
+            {
+                listener.Start();
+            }
+            catch (Exception e)
+            {
+                ModContent.GetInstance<TerrariaAgentBridge>().Logger.Error($"Bridge failed to listen on {TerrariaAgentBridge.Port}: {e.Message}");
+                listener = null;
+                return;
+            }
+            Task.Run(() => AcceptLoop(cts.Token));
+            ModContent.GetInstance<TerrariaAgentBridge>().Logger.Info($"Bridge listening on http://127.0.0.1:{TerrariaAgentBridge.Port}/");
+        }
+
+        public static void Stop()
+        {
+            FreezeWhileThinking = false;
+            cts?.Cancel();
+            try { listener?.Stop(); listener?.Close(); } catch { }
+            listener = null;
+            while (mainThreadQueue.TryDequeue(out var item))
+                item.done.TrySetResult(Error("bridge stopped"));
+        }
+
+        /// <summary>Called every frame on the main thread.</summary>
+        public static void PumpMainThread()
+        {
+            int budget = 32;
+            while (budget-- > 0 && mainThreadQueue.TryDequeue(out var item))
+            {
+                try { item.done.TrySetResult(item.work()); }
+                catch (Exception e) { item.done.TrySetResult(Error(e.ToString())); }
+            }
+        }
+
+        public static Task<object> OnMainThread(Func<object> work)
+        {
+            var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+            mainThreadQueue.Enqueue((work, tcs));
+            return tcs.Task;
+        }
+
+        public static Dictionary<string, object> Error(string message) => new() { ["ok"] = false, ["error"] = message };
+
+        private static async Task AcceptLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested && listener != null)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync(); }
+                catch { break; }
+                _ = Task.Run(() => Handle(ctx));
+            }
+        }
+
+        private static async Task Handle(HttpListenerContext ctx)
+        {
+            object result;
+            int status = 200;
+            try
+            {
+                string body = "";
+                if (ctx.Request.HasEntityBody)
+                {
+                    using var reader = new StreamReader(ctx.Request.InputStream, Encoding.UTF8);
+                    body = await reader.ReadToEndAsync();
+                }
+                result = await Route(ctx.Request.HttpMethod, ctx.Request.Url.AbsolutePath, body);
+            }
+            catch (Exception e)
+            {
+                status = 500;
+                result = Error(e.Message);
+            }
+
+            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(result);
+            ctx.Response.StatusCode = status;
+            ctx.Response.ContentType = "application/json";
+            ctx.Response.ContentLength64 = bytes.Length;
+            try
+            {
+                await ctx.Response.OutputStream.WriteAsync(bytes);
+                ctx.Response.Close();
+            }
+            catch { }
+        }
+
+        private static bool InWorld => !Main.gameMenu && Main.LocalPlayer != null && Main.LocalPlayer.active;
+
+        private static async Task<object> Route(string method, string path, string body)
+        {
+            switch (method + " " + path)
+            {
+                case "GET /health":
+                    return new Dictionary<string, object> { ["ok"] = true, ["version"] = TerrariaAgentBridge.Version, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking };
+
+                case "GET /state":
+                    if (!InWorld) return Error("not in a world");
+                    return await OnMainThread(() => Observation.Build(Main.LocalPlayer));
+
+                case "POST /config":
+                {
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    if (doc.RootElement.TryGetProperty("freeze", out var freeze))
+                        FreezeWhileThinking = freeze.GetBoolean();
+                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking };
+                }
+
+                case "POST /cancel":
+                    return await OnMainThread(() =>
+                    {
+                        SkillRunner.Cancel("cancelled by agent");
+                        return new Dictionary<string, object> { ["ok"] = true };
+                    });
+
+                case "POST /skill":
+                {
+                    if (!InWorld) return Error("not in a world");
+                    using var doc = JsonDocument.Parse(body);
+                    string name = doc.RootElement.GetProperty("name").GetString();
+                    JsonElement args = doc.RootElement.TryGetProperty("args", out var a) ? a.Clone() : default;
+
+                    // Build + start the skill on the main thread, then wait (off the main thread) for it to finish.
+                    var started = await OnMainThread(() =>
+                    {
+                        Skill skill;
+                        try { skill = SkillFactory.Create(name, args); }
+                        catch (Exception e) { return Error(e.Message); }
+                        if (skill == null) return Error($"unknown skill '{name}'");
+                        return SkillRunner.Start(skill);
+                    });
+                    if (started is Task<object> running)
+                        return await running;
+                    return started;
+                }
+
+                default:
+                    return Error($"no route {method} {path}");
+            }
+        }
+    }
+}

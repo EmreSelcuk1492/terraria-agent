@@ -1,0 +1,220 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ModLoader;
+
+namespace TerrariaAgentBridge.Skills
+{
+    /// <summary>Place a block, wall, platform, or furniture item at a tile (walks into reach first).</summary>
+    public class Place : Skill
+    {
+        public override string Name => "place";
+        private readonly string itemName;
+        private readonly int x, y;
+        private int itemType = -1;
+        private Skill approach;
+
+        public Place(string item, int x, int y) { itemName = item; this.x = x; this.y = y; }
+
+        public override void Tick(Player p)
+        {
+            if (itemType < 0)
+            {
+                itemType = Game.ResolveItem(itemName);
+                if (itemType < 0) { Fail($"unknown item '{itemName}'"); return; }
+            }
+            int slot = Game.FindSlot(p, i => i.type == itemType);
+            if (slot < 0) { Fail($"no {Game.ItemName(itemType)} in inventory"); return; }
+            Item item = p.inventory[slot];
+            if (item.createTile < 0 && item.createWall <= 0) { Fail($"{Game.ItemName(itemType)} is not placeable"); return; }
+
+            if (!Game.InReach(p, x, y, item.tileBoost))
+            {
+                approach ??= new MoveTo(x, y, 3);
+                if (Step(approach, p)) return;
+                if (!Game.InReach(p, x, y, item.tileBoost)) { Fail($"could not get within reach of ({x},{y}): {approach.Message}"); return; }
+            }
+
+            Game.Hold(p, slot);
+            slot = p.selectedItem;
+            Tile t = Framing.GetTileSafely(x, y);
+
+            if (item.createTile >= 0)
+            {
+                if (t.HasTile) { Fail($"({x},{y}) is occupied by {Game.TileName(t.TileType)}; mine it first"); return; }
+                if (new Rectangle(x * 16, y * 16, 16, 16).Intersects(p.Hitbox) && Main.tileSolid[item.createTile])
+                {
+                    Fail($"({x},{y}) overlaps the player; step aside first");
+                    return;
+                }
+                bool placed = WorldGen.PlaceTile(x, y, item.createTile, mute: false, forced: false, plr: p.whoAmI, style: item.placeStyle);
+                if (!placed || !Framing.GetTileSafely(x, y).HasTile)
+                {
+                    Fail($"could not place {Game.ItemName(itemType)} at ({x},{y}): needs support below/beside, or more free space (furniture is multi-tile; give the bottom-left tile on solid ground)");
+                    return;
+                }
+            }
+            else
+            {
+                if (t.WallType != 0) { Fail($"({x},{y}) already has a wall"); return; }
+                WorldGen.PlaceWall(x, y, item.createWall);
+                if (Framing.GetTileSafely(x, y).WallType == 0) { Fail($"could not place wall at ({x},{y}): walls need an adjacent wall or block"); return; }
+            }
+            Game.ConsumeOne(p, slot);
+            Succeed($"placed {Game.ItemName(itemType)} at ({x},{y})");
+        }
+    }
+
+    /// <summary>Craft an item `count` times. Must already be standing next to the required station(s).</summary>
+    public class Craft : Skill
+    {
+        public override string Name => "craft";
+        private readonly string itemName;
+        private readonly int count;
+
+        public Craft(string item, int count) { itemName = item; this.count = Math.Clamp(count, 1, 999); }
+
+        public override void Tick(Player p)
+        {
+            int type = Game.ResolveItem(itemName);
+            if (type < 0) { Fail($"unknown item '{itemName}'"); return; }
+
+            var recipes = Enumerable.Range(0, Recipe.numRecipes).Select(i => Main.recipe[i])
+                .Where(r => r.createItem.type == type && !r.Disabled).ToList();
+            if (recipes.Count == 0) { Fail($"{Game.ItemName(type)} has no crafting recipe"); return; }
+
+            int made = 0;
+            var problems = new List<string>();
+            while (made < count)
+            {
+                Recipe usable = recipes.FirstOrDefault(r => Crafting.MissingStations(p, r).Count == 0 && Crafting.MissingIngredients(p, r).Count == 0);
+                if (usable == null) break;
+                Crafting.Consume(p, usable);
+                p.QuickSpawnItem(p.GetSource_Misc("agent_craft"), type, usable.createItem.stack);
+                made += 1;
+            }
+
+            if (made == count) { Succeed($"crafted {Game.ItemName(type)} x{made}"); return; }
+
+            foreach (Recipe r in recipes.Take(3))
+            {
+                var stations = Crafting.MissingStations(p, r);
+                var ingredients = Crafting.MissingIngredients(p, r);
+                problems.Add($"recipe [{Crafting.Describe(r)}]" +
+                    (stations.Count > 0 ? $" missing station: {string.Join(", ", stations)} (stand next to it)" : "") +
+                    (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : ""));
+            }
+            string msg = $"crafted {made}/{count} {Game.ItemName(type)}. " + string.Join("; ", problems);
+            if (made > 0) Succeed(msg); else Fail(msg);
+        }
+    }
+
+    /// <summary>Fight the nearest hostile NPC (or a named one) with the best weapon. Bails out at low health.</summary>
+    public class Attack : Skill
+    {
+        public override string Name => "attack";
+        public override int TimeoutTicks => 60 * 30;
+        private readonly string target;
+        private int npcIndex = -1;
+        private int kills;
+        private readonly int maxKills;
+        private readonly MoveTo mover = new(0, 0);
+
+        public Attack(string target, int maxKills)
+        {
+            this.target = string.IsNullOrWhiteSpace(target) ? "nearest" : target.Trim();
+            this.maxKills = Math.Clamp(maxKills, 1, 20);
+        }
+
+        public override void Tick(Player p)
+        {
+            if (p.dead) { Fail("you died"); return; }
+            if (p.statLife < p.statLifeMax2 * 0.3f) { Fail($"retreating: health {p.statLife}/{p.statLifeMax2}. Heal (use_item a potion) or run."); return; }
+
+            if (npcIndex < 0 || !Main.npc[npcIndex].active || Main.npc[npcIndex].life <= 0)
+            {
+                if (npcIndex >= 0) kills++;
+                if (kills >= maxKills) { Succeed($"killed {kills}"); return; }
+                npcIndex = FindTarget(p);
+                if (npcIndex < 0)
+                {
+                    if (kills > 0) Succeed($"killed {kills}; no more targets nearby");
+                    else Fail($"no hostile '{target}' within 40 tiles");
+                    return;
+                }
+            }
+
+            int slot = Game.BestSlot(p, i => i.damage > 0 && i.pick == 0 && i.axe == 0 && i.hammer == 0 && i.ammo == 0 && !i.consumable ? i.damage : 0);
+            if (slot < 0) slot = Game.BestSlot(p, i => i.damage); // fall back to a pickaxe/axe swing
+            if (slot < 0) { Fail("no weapon in inventory"); return; }
+            Game.Hold(p, slot);
+            Item weapon = p.inventory[p.selectedItem];
+
+            NPC npc = Main.npc[npcIndex];
+            float range = weapon.DamageType == DamageClass.Melee && weapon.shoot <= 0 ? 2.5f : 14f;
+            int dx = (int)((npc.Center.X - p.Center.X) / 16f);
+            int dy = (int)((npc.Center.Y - p.Center.Y) / 16f);
+
+            bool inRange = Math.Abs(dx) <= range && Math.Abs(dy) <= Math.Max(3f, range * 0.6f);
+            mover.Drive(p, dx, dy, walk: !inRange);
+            if (mover.Done) { Fail(mover.Message); return; }
+
+            p.direction = npc.Center.X < p.Center.X ? -1 : 1;
+            AgentPlayer.Aim = npc.Center;
+            if (inRange) p.controlUseItem = true;
+        }
+
+        private int FindTarget(Player p)
+        {
+            int best = -1;
+            float bestD = 40f;
+            for (int i = 0; i < Main.maxNPCs; i++)
+            {
+                NPC n = Main.npc[i];
+                if (!n.active || n.friendly || n.townNPC || n.damage <= 0 || n.dontTakeDamage) continue;
+                if (target != "nearest" && !n.FullName.Contains(target, StringComparison.OrdinalIgnoreCase)) continue;
+                float d = (n.Center - p.Center).Length() / 16f;
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            return best;
+        }
+    }
+
+    /// <summary>Use (consume/activate) an item once: potions, food, summons, torches in hand, etc.</summary>
+    public class UseItem : Skill
+    {
+        public override string Name => "use_item";
+        public override int TimeoutTicks => 60 * 5;
+        private readonly string itemName;
+        private bool pressed;
+
+        public UseItem(string item) { itemName = item; }
+
+        public override void Tick(Player p)
+        {
+            if (!pressed)
+            {
+                int type = Game.ResolveItem(itemName);
+                int slot = type < 0 ? -1 : Game.FindSlot(p, i => i.type == type);
+                if (slot < 0) { Fail($"no '{itemName}' in inventory"); return; }
+                Game.Hold(p, slot);
+                AgentPlayer.Aim = p.Center + new Vector2(p.direction * 48, 0);
+                p.controlUseItem = true;
+                if (Ticks >= 2) pressed = true;
+                return;
+            }
+            if (p.itemAnimation == 0) Succeed($"used {itemName}");
+        }
+    }
+
+    public class Wait : Skill
+    {
+        public override string Name => "wait";
+        private readonly int ticks;
+        public Wait(float seconds) { ticks = (int)(Math.Clamp(seconds, 0.1f, 20f) * 60); }
+        public override int TimeoutTicks => ticks + 60;
+        public override void Tick(Player p) { if (Ticks >= ticks) Succeed($"waited {ticks / 60f:0.#}s"); }
+    }
+}

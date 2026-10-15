@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.pytest_cache/
+agent/runs/
+bridge/TerrariaAgentBridge/bin/
+bridge/TerrariaAgentBridge/obj/
+*.tmod
+.DS_Store

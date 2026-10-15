@@ -1,0 +1,12 @@
+[project]
+name = "terraria-agent"
+version = "0.1.0"
+description = "Claude plays Terraria through the Terraria Agent Bridge tModLoader mod"
+requires-python = ">=3.10"
+dependencies = ["anthropic>=1.14", "httpx>=0.27"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+Exposes the local player to an external AI agent over HTTP on 127.0.0.1:7979.
+Game state comes out as JSON (inventory, ASCII tile map, nearby NPCs, craftable items);
+skills (move_to, mine, place, craft, attack, ...) go in and drive the player tick by tick.
+Single player only.

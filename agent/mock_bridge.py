@@ -1,0 +1,253 @@
+"""A tiny fake Terraria that speaks the bridge protocol, for testing the agent without the game.
+
+    python mock_bridge.py            # serves on 127.0.0.1:7979
+    python -m terraria_agent --goal "Craft a work bench and a wooden sword"
+
+Flat grass at y=100 over stone, a few trees, some copper ore, one slime. Recipes are a small real subset.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+GROUND_Y = 100  # top solid row
+RECIPES = {
+    "WorkBench": ({"Wood": 10}, None, 1),
+    "WoodenSword": ({"Wood": 7}, "WorkBenches", 1),
+    "WoodPlatform": ({"Wood": 1}, None, 2),
+    "Torch": ({"Wood": 1, "Gel": 1}, None, 3),
+    "Furnace": ({"StoneBlock": 20, "Wood": 4, "Torch": 3}, "WorkBenches", 1),
+    "CopperBar": ({"CopperOre": 3}, "Furnaces", 1),
+}
+PLACES = {"WorkBench": "WorkBenches", "Furnace": "Furnaces", "DirtBlock": "Dirt", "StoneBlock": "Stone", "WoodPlatform": "Platforms"}
+DROPS = {"Trees": ("Wood", 8), "Dirt": ("DirtBlock", 1), "Stone": ("StoneBlock", 1), "CopperOre": ("CopperOre", 1)}
+
+
+class World:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.player = {"x": 50, "y": GROUND_Y - 2, "hp": 100, "max_hp": 100}
+        self.inventory: dict[str, int] = {"CopperShortsword": 1, "CopperPickaxe": 1, "CopperAxe": 1}
+        self.tiles: dict[tuple[int, int], str] = {}
+        for x in range(0, 200):
+            self.tiles[(x, GROUND_Y)] = "Dirt"
+            for y in range(GROUND_Y + 1, GROUND_Y + 30):
+                self.tiles[(x, y)] = "Stone"
+        for x in (58, 63, 71, 40, 33):
+            for y in range(GROUND_Y - 8, GROUND_Y):
+                self.tiles[(x, y)] = "Trees"
+        for x in range(44, 48):
+            self.tiles[(x, GROUND_Y + 4)] = "CopperOre"
+        self.npcs = [{"name": "Green Slime", "x": 60, "y": GROUND_Y - 1, "hp": 14, "max_hp": 14, "hostile": True, "boss": False}]
+        self.freeze = False
+        self.ticks = 0
+
+    # ---- observation -----------------------------------------------------------------
+
+    def inv_list(self) -> list[dict[str, Any]]:
+        return [{"slot": i, "item": k, "stack": v} for i, (k, v) in enumerate(self.inventory.items()) if v > 0]
+
+    def summary(self) -> dict[str, Any]:
+        p = self.player
+        return {**p, "mana": 20, "max_mana": 20, "defense": 0, "on_ground": True, "in_water": False, "dead": False, "holding": None}
+
+    def station_near(self, station: str | None) -> bool:
+        if station is None:
+            return True
+        px, py = self.player["x"], self.player["y"]
+        return any(t == station and abs(x - px) <= 4 and abs(y - py) <= 3 for (x, y), t in self.tiles.items())
+
+    def craftable(self) -> list[str]:
+        return [n for n, (ing, st, _) in RECIPES.items() if self.station_near(st) and all(self.inventory.get(k, 0) >= v for k, v in ing.items())]
+
+    def state(self) -> dict[str, Any]:
+        px, py = self.player["x"], self.player["y"]
+        ox, oy = px - 30, py - 17
+        chars = {"Dirt": "#", "Stone": "#", "Trees": "T", "CopperOre": "$", "WorkBenches": "+", "Furnaces": "+", "Platforms": "="}
+        rows = []
+        for y in range(oy, oy + 35):
+            row = "".join(chars.get(self.tiles.get((x, y), ""), ".") for x in range(ox, ox + 61))
+            rows.append(row)
+        for n in self.npcs:
+            if 0 <= n["x"] - ox < 61 and 0 <= n["y"] - oy < 35:
+                r = rows[n["y"] - oy]
+                rows[n["y"] - oy] = r[: n["x"] - ox] + "E" + r[n["x"] - ox + 1 :]
+        r = rows[py - oy]
+        rows[py - oy] = r[: px - ox] + "@" + r[px - ox + 1 :]
+
+        nearby: dict[str, Any] = {}
+        for (x, y), t in self.tiles.items():
+            if t == "Trees" and self.tiles.get((x, y + 1)) == "Trees":
+                continue
+            if t in ("Trees", "CopperOre", "WorkBenches", "Furnaces"):
+                nearby.setdefault(t, []).append((x, y))
+        nearby_out = {
+            k: {"count": len(v), "closest": sorted(v, key=lambda c: abs(c[0] - px) + abs(c[1] - py))[:3]} for k, v in nearby.items()
+        }
+        return {
+            "ok": True,
+            "player": self.summary(),
+            "world": {"time": "08:30", "is_day": True, "blood_moon": False, "biomes": ["forest", "surface"], "spawn": [50, GROUND_Y - 2],
+                      "surface_y": GROUND_Y + 10, "size": [200, 300], "bosses_defeated": []},
+            "inventory": self.inv_list(),
+            "map": {"origin": [ox, oy], "legend": "@ you, # solid, T tree, $ ore, + furniture, E hostile, . air", "rows": rows},
+            "npcs": [{**n, "distance": abs(n["x"] - px)} for n in self.npcs],
+            "nearby": nearby_out,
+            "craftable_now": self.craftable(),
+        }
+
+    # ---- skills ------------------------------------------------------------------------
+
+    def skill(self, name: str, a: dict[str, Any]) -> dict[str, Any]:
+        fn = getattr(self, f"s_{name}", None)
+        if fn is None:
+            return {"ok": False, "error": f"unknown skill '{name}'"}
+        try:
+            ok, msg, ticks = fn(**a)
+        except TypeError as e:
+            return {"ok": False, "error": str(e)}
+        self.ticks += ticks
+        return {"ok": ok, "skill": name, "message": msg, "ticks": ticks, "player": self.summary(), "inventory": self.inv_list()}
+
+    def _walk(self, x: int) -> int:
+        dist = abs(x - self.player["x"])
+        self.player["x"] = x
+        return dist * 8
+
+    def s_move_to(self, x: int, y: int, tolerance: int = 1):
+        if not 0 <= x < 200:
+            return False, f"stuck at ({self.player['x']},{self.player['y']}): world edge", 60
+        return True, f"arrived at ({x},{self.player['y']})", self._walk(x)
+
+    def s_mine(self, x: int, y: int):
+        t = self.tiles.get((x, y))
+        if not t:
+            return False, f"nothing to mine at ({x},{y})", 1
+        ticks = self._walk(x - 1)
+        if t == "Trees":
+            yy = y
+            while self.tiles.get((x, yy)) == "Trees":
+                del self.tiles[(x, yy)]
+                yy -= 1
+            self.inventory["Wood"] = self.inventory.get("Wood", 0) + 8
+            self.inventory["Acorn"] = self.inventory.get("Acorn", 0) + 1
+        else:
+            del self.tiles[(x, y)]
+            item, n = DROPS.get(t, (t, 1))
+            self.inventory[item] = self.inventory.get(item, 0) + n
+        return True, f"broke {t} at ({x},{y})", ticks + 40
+
+    def s_mine_nearest(self, target: str, count: int = 1):
+        key = {"tree": "Trees", "trees": "Trees", "wood": "Trees", "ore": "CopperOre"}.get(target.lower(), target)
+        mined, ticks = 0, 0
+        for _ in range(count):
+            px = self.player["x"]
+            cands = [(x, y) for (x, y), t in self.tiles.items() if t == key and not (key == "Trees" and self.tiles.get((x, y + 1)) == "Trees")]
+            if not cands:
+                break
+            x, y = min(cands, key=lambda c: abs(c[0] - px) + abs(c[1] - self.player["y"]) * 2.5)
+            ok, _, t = self.s_mine(x, y)
+            ticks += t
+            mined += ok
+        if mined == 0:
+            return False, f"no reachable {target} within 60 tiles", 10
+        return True, f"mined {mined}/{count}", ticks
+
+    def s_place(self, item: str, x: int, y: int):
+        if self.inventory.get(item, 0) <= 0:
+            return False, f"no {item} in inventory", 1
+        if item not in PLACES:
+            return False, f"{item} is not placeable", 1
+        if (x, y) in self.tiles:
+            return False, f"({x},{y}) is occupied by {self.tiles[(x, y)]}; mine it first", 1
+        if (x, y + 1) not in self.tiles:
+            return False, f"could not place {item} at ({x},{y}): needs support below", 1
+        self.tiles[(x, y)] = PLACES[item]
+        self.inventory[item] -= 1
+        return True, f"placed {item} at ({x},{y})", self._walk(x + 2) + 15
+
+    def s_craft(self, item: str, count: int = 1):
+        if item not in RECIPES:
+            return False, f"unknown item '{item}' (mock knows {', '.join(RECIPES)})", 1
+        ing, station, out = RECIPES[item]
+        made = 0
+        while made < count and self.station_near(station) and all(self.inventory.get(k, 0) >= v for k, v in ing.items()):
+            for k, v in ing.items():
+                self.inventory[k] -= v
+            self.inventory[item] = self.inventory.get(item, 0) + out
+            made += 1
+        if made == count:
+            return True, f"crafted {item} x{made}", 1
+        missing = [f"{k} {self.inventory.get(k, 0)}/{v}" for k, v in ing.items() if self.inventory.get(k, 0) < v]
+        why = (f" missing station: {station} (stand next to it)" if not self.station_near(station) else "") + (
+            f" missing: {', '.join(missing)}" if missing else "")
+        return made > 0, f"crafted {made}/{count} {item}.{why}", 1
+
+    def s_attack(self, target: str = "nearest", max_kills: int = 1):
+        if not self.npcs:
+            return False, "no hostile within 40 tiles", 1
+        n = self.npcs.pop(0)
+        self.inventory["Gel"] = self.inventory.get("Gel", 0) + 2
+        self.player["hp"] -= 12
+        return True, f"killed 1 ({n['name']})", self._walk(n["x"] - 1) + 90
+
+    def s_use_item(self, item: str):
+        if self.inventory.get(item, 0) <= 0:
+            return False, f"no '{item}' in inventory", 1
+        return True, f"used {item}", 20
+
+    def s_wait(self, seconds: float = 1):
+        return True, f"waited {seconds}s", int(seconds * 60)
+
+
+def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPServer:
+    world = world or World()
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, obj: Any) -> None:
+            body = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self) -> None:
+            with world.lock:
+                if self.path == "/health":
+                    self._send({"ok": True, "version": "mock", "in_world": True, "freeze": world.freeze})
+                elif self.path == "/state":
+                    self._send(world.state())
+                else:
+                    self._send({"ok": False, "error": f"no route GET {self.path}"})
+
+        def do_POST(self) -> None:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+            with world.lock:
+                if self.path == "/skill":
+                    self._send(world.skill(body["name"], body.get("args") or {}))
+                elif self.path == "/config":
+                    world.freeze = bool(body.get("freeze", world.freeze))
+                    self._send({"ok": True, "freeze": world.freeze})
+                elif self.path == "/cancel":
+                    self._send({"ok": True})
+                else:
+                    self._send({"ok": False, "error": f"no route POST {self.path}"})
+
+        def log_message(self, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.world = world  # type: ignore[attr-defined]
+    return server
+
+
+if __name__ == "__main__":
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 7979
+    print(f"mock bridge on http://127.0.0.1:{port}")
+    make_server(port).serve_forever()
