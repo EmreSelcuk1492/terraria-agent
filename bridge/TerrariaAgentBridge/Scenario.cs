@@ -147,20 +147,14 @@ namespace TerrariaAgentBridge
         }
 
         /// <summary>
-        /// First standable ground in column x from `fromY` down that isn't a floating island: a 10+ row air gap within
-        /// 60 rows under it means an island (an LLM-track start landed on one at y=66 with a 29-tile drop below).
+        /// First standable ground in column x from `fromY` down, below floating-island height (an LLM-track start landed
+        /// on an island at y=66 over a 29-tile drop). Islands float in the top part of the sky; the surface sits near
+        /// Main.worldSurface. An air-gap test was tried first and wrongly skipped real ground over caves.
         /// </summary>
         public static int Ground(int x, int fromY)
         {
-            int y = fromY;
-            while (y < Main.worldSurface + 100)
-            {
-                while (y < Main.worldSurface + 100 && !(Game.Solid(x, y) && !Game.Solid(x, y - 1))) y++;
-                int gap = 0, run = 0;
-                for (int j = y + 1; j < y + 60 && gap < 10; j++) { run = Game.Solid(x, j) ? 0 : run + 1; gap = Math.Max(gap, run); }
-                if (gap < 10) return y;
-                y += 2; // an island: keep looking below it
-            }
+            int y = Math.Max(fromY, (int)(Main.worldSurface * 0.45));
+            while (y < Main.worldSurface + 100 && !(Game.Solid(x, y) && !Game.Solid(x, y - 1))) y++;
             return y;
         }
 
