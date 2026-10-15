@@ -17,7 +17,10 @@ class BridgeClient:
     def __init__(self, base_url: str = DEFAULT_URL, skill_timeout: float = 1800.0):
         # Macro skills (obtain, build_house, mine_vein) run for minutes, longer with guard fights; a shorter read
         # timeout would make the caller think a still-running skill failed, and its next call would cancel it.
-        self._http = httpx.Client(base_url=base_url, timeout=httpx.Timeout(10.0, read=skill_timeout))
+        # The mod's HttpListener only answers Host 127.0.0.1:7979; a containerised game is reached on another
+        # host port (sim/), so always present the Host the listener expects.
+        self._http = httpx.Client(base_url=base_url, headers={"Host": "127.0.0.1:7979"},
+                                  timeout=httpx.Timeout(10.0, read=skill_timeout))
 
     def _get(self, path: str) -> dict[str, Any]:
         try:
