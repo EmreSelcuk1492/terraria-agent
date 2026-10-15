@@ -198,6 +198,14 @@ namespace TerrariaAgentBridge
                     });
                 }
 
+                case "POST /scenario":
+                {
+                    if (!InWorld) return Error("not in a world");
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    JsonElement req = doc.RootElement.Clone();
+                    return await OnMainThread(() => Scenario.Apply(req));
+                }
+
                 case "POST /save":
                     if (!InWorld) return Error("not in a world");
                     return await OnMainThread(() =>

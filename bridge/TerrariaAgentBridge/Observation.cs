@@ -201,6 +201,7 @@ namespace TerrariaAgentBridge
                 list.Add(new Dictionary<string, object>
                 {
                     ["name"] = n.FullName,
+                    ["index"] = n.whoAmI,
                     ["x"] = (int)(n.Center.X / 16),
                     ["y"] = (int)(n.Center.Y / 16),
                     ["hp"] = n.life,

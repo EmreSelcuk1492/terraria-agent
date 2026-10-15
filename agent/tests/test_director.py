@@ -105,3 +105,18 @@ def test_night_without_home_digs_in_until_day(world_and_bridge, tmp_path):
     d.call = lambda name, args: (calls.append((name, args)), (True, "dug in at (1,2). Roof at (1, 1) (2, 1): mine it"))[1]
     d._night(d.observe())
     assert calls[0] == ("dig_in", {"wait_seconds": 600, "until_hp": 0.8, "until_day": True})
+
+
+def test_scenario_suite_against_mock(world_and_bridge, tmp_path):
+    from terraria_agent import scenarios
+    _, bridge = world_and_bridge
+    second = mock_bridge.make_server(0, mock_bridge.World())  # one world per worker, like one container each
+    threading.Thread(target=second.serve_forever, daemon=True).start()
+    urls = [str(bridge._http.base_url), f"http://127.0.0.1:{second.server_address[1]}"]
+    quick = [scenarios.Scenario("zombie_mock", "mock smoke", {"hp": 100, "spawn": [{"npc": "Zombie", "dx": 2}]}, 1.5, min_cleared=1),
+             scenarios.Scenario("low_hp_mock", "mock smoke", {"hp": 20}, 1.5, min_hp=45, work=None)]
+    results = scenarios.run_suite(urls, quick, repeat=2, out_dir=tmp_path, verbose=False)
+    assert len(results) == 4
+    assert all(r.passed for r in results), [(r.scenario, r.failures, r.error) for r in results]
+    assert "4/4 passed" in (tmp_path / "report.md").read_text()
+    second.shutdown()

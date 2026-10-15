@@ -12,6 +12,8 @@ namespace TerrariaAgentBridge
     public static class Sandbox
     {
         public static volatile bool Peaceful, God;
+        /// <summary>Scenario tests: only the enemies the scenario spawns, none of the world's own.</summary>
+        public static volatile bool NoNaturalSpawns;
 
         public static bool Hostile(NPC n) => n.active && !n.friendly && !n.townNPC && n.damage > 0;
 
@@ -29,7 +31,7 @@ namespace TerrariaAgentBridge
     {
         public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
         {
-            if (Sandbox.Peaceful) maxSpawns = 0;
+            if (Sandbox.Peaceful || Sandbox.NoNaturalSpawns) maxSpawns = 0;
         }
 
         public override void OnSpawn(NPC npc, IEntitySource source)

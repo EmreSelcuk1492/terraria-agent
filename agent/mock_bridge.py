@@ -136,11 +136,20 @@ class World:
         fn = getattr(self, f"s_{name}", None)
         if fn is None:
             return {"ok": False, "error": f"unknown skill '{name}'"}
+        # Bodyguard, like the mod's: enemies within 6 tiles are fought off first (a few hits taken).
+        fought = ""
+        near = [n for n in self.npcs if n.get("hostile") and abs(n["x"] - self.player["x"]) <= 6 and name != "attack"]
+        if near and self.player["hp"] >= self.player["max_hp"] * 0.5:
+            for n in near:
+                self.npcs.remove(n)
+                self.player["hp"] -= 8
+            fought = f" [guard: {', '.join('killed ' + n['name'] for n in near)}]"
         try:
             ok, msg, ticks = fn(**a)
         except TypeError as e:
             return {"ok": False, "error": str(e)}
         self.ticks += ticks
+        msg += fought
         return {"ok": ok, "skill": name, "message": msg, "ticks": ticks, "player": self.summary(), "inventory": self.inv_list()}
 
     def _walk(self, x: int) -> int:
@@ -414,6 +423,22 @@ class World:
         self.player["hp"] = max(self.player["hp"], int(self.player["max_hp"] * until_hp))
         return True, f"dug in at ({x},{y + 4}), sealed 2/2 open tiles; hp regenerated. Roof at ({x}, {y + 1}) ({x + 1}, {y + 1}): mine it to get out.", int(wait_seconds * 60)
 
+    def scenario(self, b: dict[str, Any]) -> dict[str, Any]:
+        """Mock of the mod's POST /scenario: health, time, enemies at offsets (no physics)."""
+        if b.get("clear", True):
+            self.npcs = []
+        if "hp" in b:
+            self.player["hp"] = max(1, min(self.player["max_hp"], int(b["hp"])))
+        if "time" in b:
+            self.ticks = {"dawn": 0, "noon": 27000, "dusk": 54000, "midnight": 70200}[b["time"]]
+        spawned = []
+        for i, s in enumerate(b.get("spawn", [])):
+            n = {"name": s["npc"], "index": 100 + i, "x": self.player["x"] + s.get("dx", 3), "y": self.player["y"] + s.get("dy", 0),
+                 "hp": 45, "max_hp": 45, "hostile": True, "boss": False}
+            self.npcs.append(n)
+            spawned.append({"npc": n["name"], "index": n["index"], "at": [n["x"], n["y"]]})
+        return {"ok": True, "spawned": spawned}
+
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)
 
@@ -448,6 +473,8 @@ def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPSe
                 elif self.path == "/config":
                     world.freeze = bool(body.get("freeze", world.freeze))
                     self._send({"ok": True, "freeze": world.freeze})
+                elif self.path == "/scenario":
+                    self._send(world.scenario(body))
                 elif self.path == "/say":
                     world.said.append(body.get("text", ""))
                     self._send({"ok": True})
