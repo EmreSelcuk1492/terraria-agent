@@ -25,8 +25,13 @@ namespace TerrariaAgentBridge
 
         public abstract void Tick(Player p);
 
-        protected void Succeed(string message) { Done = true; Ok = true; Message = message; }
-        protected void Fail(string message) { Done = true; Ok = false; Message = message; }
+        /// <summary>True while another mod drives the player's controls (see TbNav): AgentPlayer then leaves them alone.</summary>
+        public virtual bool PassThroughControls => false;
+
+        protected void Succeed(string message) { Done = true; Ok = true; Message = message; OnEnd(); }
+        protected void Fail(string message) { Done = true; Ok = false; Message = message; OnEnd(); }
+        /// <summary>Called once when the skill ends for any reason (success, failure, cancel, death, timeout).</summary>
+        protected virtual void OnEnd() { }
 
         /// <summary>Runs a child skill for one tick. Returns true while the child is still running.</summary>
         protected static bool Step(Skill child, Player p)
@@ -67,6 +72,8 @@ namespace TerrariaAgentBridge
 
         public static bool IsRunning => current != null;
         public static string CurrentName => current?.Name;
+        /// <summary>The running skill lets another mod drive controls this tick (never while the guard is fighting).</summary>
+        public static bool PassThrough => current != null && current.PassThroughControls && defense == null;
 
         /// <summary>Main thread. Returns a task that completes with the skill result.</summary>
         public static Task<object> Start(Skill skill)

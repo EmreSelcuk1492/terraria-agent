@@ -17,6 +17,9 @@ namespace TerrariaAgentBridge
         {
             if (Player.whoAmI != Main.myPlayer || !SkillRunner.IsRunning) return;
 
+            // A pass-through skill (tb_nav) lets TerraBlind's SetControls, which runs before ours, keep its inputs.
+            if (SkillRunner.PassThrough) { SkillRunner.Tick(Player); return; }
+
             Player.controlLeft = false;
             Player.controlRight = false;
             Player.controlUp = false;

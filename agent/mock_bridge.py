@@ -153,6 +153,10 @@ class World:
             return False, f"stuck at ({self.player['x']},{self.player['y']}): world edge", 60
         return True, f"arrived at ({x},{self.player['y']})", self._walk(x)
 
+    def s_tb_nav(self, x: int, y: int, mode: str = "snap"):
+        ok, msg, ticks = self.s_move_to(x, y)
+        return ok, (msg + " via TerraBlind nav") if ok else msg, ticks + 90
+
     def s_mine(self, x: int, y: int):
         t = self.tiles.get((x, y))
         if not t:

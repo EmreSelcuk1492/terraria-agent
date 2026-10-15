@@ -1,0 +1,3 @@
+[submodule "third_party/TerraBlind"]
+	path = third_party/TerraBlind
+	url = https://github.com/Reisenbug/TerraBlind.git

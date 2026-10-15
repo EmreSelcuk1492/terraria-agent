@@ -46,6 +46,14 @@ TOOLS: list[dict[str, Any]] = [
         {"x": _INT, "y": _INT, "tolerance": {"type": "integer", "description": "Tiles of slack; 1 is typical."}},
     ),
     _tool(
+        "tb_nav",
+        "Real pathfinder (TerraBlind's navigator, needs the TerraBlind mod): plans jumps, drops, digging and short "
+        "bridges across caves and cliffs where move_to gets stuck. Slower to start (about 1-2s to plan). "
+        "mode: snap (land within ~1.5 tiles, default), stand (stand exactly on the tile), reach (get within use "
+        "range), mine (until that tile is gone).",
+        {"x": _INT, "y": _INT, "mode": {"type": "string", "enum": ["snap", "stand", "reach", "mine"]}},
+    ),
+    _tool(
         "mine",
         "Break one tile at (x, y) with the right tool (axe for trees, pickaxe otherwise), walking into reach "
         "first and picking up the drop. Cutting a tree's trunk base fells the whole tree.",
@@ -181,7 +189,7 @@ TOOLS: list[dict[str, Any]] = [
     ),
 ]
 
-SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
+SKILL_TOOLS = {"move_to", "tb_nav", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
                "build_house", "check_house", "tunnel_to", "mine_vein", "collect_life_crystals", "return_to_surface",
                "equip_best", "loot_chests", "store_items", "set_spawn"}
 
