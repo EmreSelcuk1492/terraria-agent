@@ -41,8 +41,8 @@ namespace TerrariaAgentBridge
             else if (r.TryGetProperty("surface_at", out var sa))
             {
                 // Natural terrain `dx` tiles east of spawn (away from whatever earlier runs built or dug at spawn).
-                int tx = Math.Clamp(Main.spawnTileX + sa.GetInt32(), 60, Main.maxTilesX - 60), ty = 50;
-                while (ty < Main.worldSurface + 50 && !(Game.Solid(tx, ty) && Game.Solid(tx + 1, ty) || Game.Solid(tx, ty) && !Game.Solid(tx, ty - 1) && !Game.Solid(tx + 1, ty - 1))) ty++;
+                int tx = Math.Clamp(Main.spawnTileX + sa.GetInt32(), 60, Main.maxTilesX - 60);
+                int ty = Ground(tx, 50);
                 p.Teleport(new Vector2(tx * 16 + 8 - p.width / 2f, ty * 16 - p.height), TeleportationStyleID.DebugTeleport);
                 p.velocity = Vector2.Zero;
                 p.fallStart = (int)(p.position.Y / 16f);
@@ -146,6 +146,24 @@ namespace TerrariaAgentBridge
             return did;
         }
 
+        /// <summary>
+        /// First standable ground in column x from `fromY` down that isn't a floating island: a 10+ row air gap within
+        /// 60 rows under it means an island (an LLM-track start landed on one at y=66 with a 29-tile drop below).
+        /// </summary>
+        public static int Ground(int x, int fromY)
+        {
+            int y = fromY;
+            while (y < Main.worldSurface + 100)
+            {
+                while (y < Main.worldSurface + 100 && !(Game.Solid(x, y) && !Game.Solid(x, y - 1))) y++;
+                int gap = 0, run = 0;
+                for (int j = y + 1; j < y + 60 && gap < 10; j++) { run = Game.Solid(x, j) ? 0 : run + 1; gap = Math.Max(gap, run); }
+                if (gap < 10) return y;
+                y += 2; // an island: keep looking below it
+            }
+            return y;
+        }
+
         private const int ArenaHalf = 20, ArenaHeight = 12;
 
         /// <summary>
@@ -156,8 +174,7 @@ namespace TerrariaAgentBridge
         public static (int x, int ground) BuildArena()
         {
             int x = Math.Clamp(Main.spawnTileX + 80, ArenaHalf + 50, Main.maxTilesX - ArenaHalf - 50);
-            int g = 50;
-            while (g < Main.worldSurface && !Game.Solid(x, g)) g++;
+            int g = Ground(x, 50);
             for (int i = x - ArenaHalf - 1; i <= x + ArenaHalf + 1; i++)
             {
                 for (int j = g - ArenaHeight; j < g; j++)

@@ -6,6 +6,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 n="${1:-2}"; shift || true
+export SIM_SAVES="${SIM_SAVES:-$HOME/Library/Caches/terraria-sim/bench-world}"   # the pinned benchmark world
 player="${PLAYER:-Test 1}"; world="${WORLD:-The Burning Dam of Taxes}"
 bridges=(); pids=()
 for i in $(seq 1 "$n"); do

@@ -73,3 +73,15 @@ def test_wood_variants_count():
     assert llm_bench.verify({"have": {"WorkBench": 1}}, Counter({"BorealWoodWorkBench": 1}))
     assert llm_bench.verify({"have": {"WoodenHammer": 1}}, Counter({"BorealWoodHammer": 1}))
     assert not llm_bench.verify({"have": {"WorkBench": 1}}, Counter({"Furnace": 1}))
+
+
+def test_programs_with_coordinates_are_not_saved(tmp_path):
+    world, server, bridge = _bridge()
+    lib = SkillLibrary(tmp_path / "lib.json")
+    planner = ScriptedPlanner([{"thought": "", "name": "go_chop", "description": "walk there and chop",
+                                "program": [{"skill": "move_to", "args": {"x": 52, "y": 98}},
+                                            {"skill": "mine_nearest", "args": {"target": "Trees", "count": 12}}]}])
+    r = llm_bench.run_task(llm_bench.Task("wood", "w", {"have": {"Wood": 10}}), bridge, planner, lib, "primitive", 1, True,
+                           {"fresh_player": True})
+    assert r.passed and r.saved_as is None and not lib.skills
+    server.shutdown()

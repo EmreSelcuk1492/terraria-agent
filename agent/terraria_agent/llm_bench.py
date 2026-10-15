@@ -139,6 +139,8 @@ program: an ordered list of skill calls that, run one after another, achieves th
 - Item and tile names are internal names: Wood, StoneBlock, WorkBench, WoodenHammer, CopperOre, CopperBar, Trees, Stone.
 - craft walks to or places the station a recipe needs; it does not gather ingredients, so gather them first.
 - Keep programs short and robust; prefer one call with a count over many single calls.
+- Prefer skills that find things themselves (mine_nearest, craft) over absolute x/y coordinates: only programs
+  without coordinates are saved to the library, because coordinates don't carry over to the next place.
 - name: a short snake_case name describing what the program does in general (it is saved for reuse if it works).
 - description: one sentence saying what it achieves.
 Skills:
@@ -254,7 +256,10 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
         st = bridge.state()
         if ok and verify(task.check, inventory(st)):
             saved = None
-            if library is not None and use_library and not (len(program) == 1 and program[0]["skill"].startswith("lib:")):
+            located = any(k in (st.get("args") or {}) for st in program for k in ("x", "y"))
+            if located:
+                ex.log.append("  (passed, not saved: the program uses absolute coordinates, which don't generalise)")
+            if library is not None and use_library and not located and not (len(program) == 1 and program[0]["skill"].startswith("lib:")):
                 saved = library.add(plan.get("name") or task.name, plan.get("description") or task.goal, task.goal, program, task.check).name
             return TaskResult(task.name, True, attempt, planner.calls - calls0, round(planner.seconds - secs0, 1),
                               round(ex.game_seconds, 1), ex.skill_calls, ex.used, saved, program, ex.log)
@@ -328,9 +333,13 @@ def main(argv: list[str] | None = None) -> int:
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
             "library_size_at_start": len(library.skills) if library else 0}
     results = []
-    for t in tasks:
+    for i, t in enumerate(TASKS):
+        if t not in tasks:
+            continue
+        # Each task on its own patch of ground (same patch every pass), so one task's tree cutting can't starve the next.
+        place = {**start, "surface_at": a.start_dx + 120 * i}
         try:
-            r = run_task(t, bridge, planner, library, a.mode, a.attempts, a.library != "off", start)
+            r = run_task(t, bridge, planner, library, a.mode, a.attempts, a.library != "off", place)
         except BridgeError as e:
             r = TaskResult(t.name, False, 0, 0, 0, 0, 0, [], None, [], [], str(e))
         results.append(r)

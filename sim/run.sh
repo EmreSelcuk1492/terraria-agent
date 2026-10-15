@@ -6,7 +6,8 @@
 set -euo pipefail
 name="${1:?name}"; port="${2:?port}"; player="${3:?player}"; world="${4:?world}"; fresh="${5:-}"
 home="${SIM_HOME:-$HOME/Library/Caches/terraria-sim}"
-saves="$HOME/Library/Application Support/Terraria/tModLoader"
+# SIM_SAVES: a pinned Players/ + Worlds/ snapshot for benchmarks (your live Mac save changes every time you play).
+saves="${SIM_SAVES:-$HOME/Library/Application Support/Terraria/tModLoader}"
 inst="$home/instances/$name"
 if [ "$fresh" = "--fresh" ] || [ ! -d "$inst/save" ]; then
   rm -rf "$inst"; mkdir -p "$inst/save/Mods" "$inst/save/Players" "$inst/save/Worlds" "$inst/logs"

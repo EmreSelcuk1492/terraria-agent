@@ -4,7 +4,8 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 mode="${1:-primitive}"; shift || true
-port=18990; lib="$here/agent/skills/library-$mode-ab.json"
+export SIM_SAVES="${SIM_SAVES:-$HOME/Library/Caches/terraria-sim/bench-world}"   # the pinned benchmark world
+port=18990; lib="$here/agent/skills/library-$mode-ab${REP:-}.json"
 cd "$here/agent"
 for pass in fresh learned; do
   "$here/sim/run.sh" llm "$port" "${PLAYER:-Test 1}" "${WORLD:-The Burning Dam of Taxes}" --fresh | tail -1

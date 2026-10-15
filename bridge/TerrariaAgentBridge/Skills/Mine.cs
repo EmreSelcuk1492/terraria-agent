@@ -166,24 +166,28 @@ namespace TerrariaAgentBridge.Skills
                 }
             }
 
-            var next = FindNearest(p);
+            // Widen sideways when the neighbourhood is used up (an LLM-track task failed after the trees within 60
+            // tiles had been cut): 60, 120, 180 tiles. Vertical stays at the scan radius; deeper needs digging.
+            (int x, int y)? next = null;
+            int radius = Observation.ScanRadiusX;
+            for (int k = 1; k <= 3 && next == null; k++) next = FindNearest(p, radius = Observation.ScanRadiusX * k);
             if (next == null)
             {
                 string why = lastFailure != null ? $" Last failure: {lastFailure}" : "";
-                if (mined > 0) Succeed($"mined {mined}/{count}; no more reachable targets within {Observation.ScanRadiusX} tiles.{why}");
-                else Fail($"no reachable target within {Observation.ScanRadiusX} tiles.{why}");
+                if (mined > 0) Succeed($"mined {mined}/{count}; no more reachable targets within {radius} tiles.{why}");
+                else Fail($"no reachable target within {radius} tiles sideways, {Observation.ScanRadiusY} up/down.{why}");
                 return;
             }
             currentTarget = next.Value;
             current = new Mine(currentTarget.x, currentTarget.y);
         }
 
-        private (int x, int y)? FindNearest(Player p)
+        private (int x, int y)? FindNearest(Player p, int rx)
         {
             int px = Game.TileX(p), py = Game.TileY(p);
             (int, int)? best = null;
             float bestD = float.MaxValue;
-            for (int x = px - Observation.ScanRadiusX; x <= px + Observation.ScanRadiusX; x++)
+            for (int x = px - rx; x <= px + rx; x++)
             for (int y = py - Observation.ScanRadiusY; y <= py + Observation.ScanRadiusY; y++)
             {
                 if (!Game.InWorld(x, y) || skip.Contains((x, y))) continue;
