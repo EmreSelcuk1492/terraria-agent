@@ -211,7 +211,7 @@ namespace TerrariaAgentBridge
                     || type == TileID.WorkBenches || type == TileID.Furnaces || type == TileID.Anvils || type == TileID.MythrilAnvil
                     || type == TileID.Hellforge || type == TileID.Sawmill || type == TileID.Loom || type == TileID.Bottles
                     || type == TileID.DemonAltar || type == TileID.Heart || type == TileID.LifeFruit || type == TileID.Pots
-                    || (Game.IsTree(type) && !Game.IsTree(Framing.GetTileSafely(x, y + 1).TileType) && Framing.GetTileSafely(x, y + 1).HasTile);
+                    || Game.IsTreeBase(x, y);
                 if (!interesting) continue;
 
                 string name = Game.TileName(type);

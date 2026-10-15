@@ -178,8 +178,8 @@ namespace TerrariaAgentBridge.Skills
                 if (!t.HasTile) continue;
                 int type = t.TileType;
                 if (anyOre ? !TileID.Sets.Ore[type] : type != tileType) continue;
-                // Trees: only the trunk base (tile below is not tree), so the whole tree falls.
-                if (Game.IsTree(type) && Game.IsTree(Framing.GetTileSafely(x, y + 1).TileType)) continue;
+                // Trees: only the trunk base, so the whole tree falls (not the 1-wood root tiles beside it).
+                if (Game.IsTree(type) && !Game.IsTreeBase(x, y)) continue;
                 // Prefer horizontal travel over vertical (vertical needs digging or climbing).
                 float d = Math.Abs(x - px) + Math.Abs(y - py) * 2.5f;
                 if (d < bestD) { bestD = d; best = (x, y); }

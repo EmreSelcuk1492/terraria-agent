@@ -145,5 +145,14 @@ namespace TerrariaAgentBridge
         public static int RequiredPick(int tileType) => MinPick.TryGetValue(tileType, out int v) ? v : 0;
 
         public static bool IsTree(int tileType) => tileType == TileID.Trees || tileType == TileID.PalmTree;
+
+        /// <summary>Bottom trunk tile: tree, nothing tree-like below, more trunk above. Root tiles beside the trunk fail the last check.</summary>
+        public static bool IsTreeBase(int x, int y)
+        {
+            Tile t = Framing.GetTileSafely(x, y), below = Framing.GetTileSafely(x, y + 1), above = Framing.GetTileSafely(x, y - 1);
+            return t.HasTile && IsTree(t.TileType)
+                && !(below.HasTile && IsTree(below.TileType))
+                && above.HasTile && IsTree(above.TileType);
+        }
     }
 }
