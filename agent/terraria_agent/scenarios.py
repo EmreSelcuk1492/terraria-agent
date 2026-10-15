@@ -293,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
     locks = [exclusive(u) for u in (a.bridge or ["http://127.0.0.1:7979"])]  # noqa: F841
     out = ROOT / "runs" / "scenarios" / time.strftime("%Y%m%d-%H%M%S")
     results = run_suite(a.bridge or ["http://127.0.0.1:7979"], chosen, a.repeat, out, config=config)
+    from .lab import publish_quietly
+    publish_quietly(out)
     print(f"\n{sum(r.passed for r in results)}/{len(results)} passed. Report: {out / 'report.md'}")
     return 0 if all(r.passed for r in results) else 1
 

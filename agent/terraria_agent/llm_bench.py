@@ -31,6 +31,7 @@ import httpx
 
 from .bridge import BridgeClient, BridgeError, exclusive
 from .director import ROOT
+from .lab import publish_quietly
 from .skill_library import SkillLibrary
 from .tools import TOOLS
 
@@ -354,8 +355,10 @@ def main(argv: list[str] | None = None) -> int:
               f"game {r.game_seconds}s, {r.skill_calls} skills, library {r.used_library or '-'}, saved {r.saved_as or '-'} {r.error or ''}",
               flush=True)
         write_report(results, meta, out)
+        publish_quietly(out)  # the lab page shows the run growing task by task
     meta["library_size_at_end"] = len(library.skills) if library else 0
     write_report(results, meta, out)
+    publish_quietly(out)
     print(f"\n{sum(r.passed for r in results)}/{len(results)} passed. Report: {out / 'report.md'}")
     return 0
 

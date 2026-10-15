@@ -609,6 +609,9 @@ class Director:
         with self.journal_path.open("a") as f:
             f.write("\n".join(lines) + "\n")
         self.note(f"Session over: {len(done)}/{len(self.plan)} plan steps done. Journal: {self.journal_path.name}", chat=True)
+        from .lab import publish_director_quietly
+        host = "mac" if str(self.bridge._http.base_url).rstrip("/").endswith(":7979") else "sim"
+        publish_director_quietly(self.journal_path, f"Director {time.strftime('%m-%d %H:%M')}", host)
         try:
             self.bridge.status(f"AI Director: done, {len(done)}/{len(self.plan)} steps. Journal in agent/runs/")
             self.bridge.set_background(False)
