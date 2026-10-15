@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mock_bridge import make_server  # noqa: E402
 from terraria_agent.agent import Agent  # noqa: E402
+from terraria_agent.backends import Call, ClaudeBackend, OllamaBackend  # noqa: E402
+from terraria_agent.repl import parse  # noqa: E402
 from terraria_agent.bridge import BridgeClient  # noqa: E402
 from terraria_agent.memory import Memory  # noqa: E402
 from terraria_agent.tools import TOOLS, ToolExecutor  # noqa: E402
@@ -91,7 +93,7 @@ def test_full_loop_crafts_sword(bridge, tmp_path):
     ]
     claude = ScriptedClaude(turns)
     mem = Memory(tmp_path / "lessons.md")
-    stats = Agent(bridge, mem, client=claude, log_dir=tmp_path / "runs", verbose=False).run("Craft a wooden sword", max_turns=10)
+    stats = Agent(bridge, mem, ClaudeBackend(client=claude), log_dir=tmp_path / "runs", verbose=False).run("Craft a wooden sword", max_turns=10)
 
     assert stats.turns == 5 and stats.tool_calls == 5 and stats.failures == 0
     assert any(i["item"] == "WoodenSword" for i in bridge.state()["inventory"])
@@ -113,5 +115,35 @@ def test_lessons_reach_system_prompt(bridge, tmp_path):
     mem = Memory(tmp_path / "lessons.md")
     mem.add("Trees drop ~8 Wood each")
     claude = ScriptedClaude([[NS(type="text", text="ok")]])
-    Agent(bridge, mem, client=claude, verbose=False).run("noop", max_turns=1)
+    Agent(bridge, mem, ClaudeBackend(client=claude), verbose=False).run("noop", max_turns=1)
     assert "Trees drop ~8 Wood each" in claude.requests[0]["system"]
+
+
+def test_haiku_skips_fallbacks():
+    claude = ScriptedClaude([[NS(type="text", text="ok")]])
+    b = ClaudeBackend(model="claude-haiku-5-5", client=claude)
+    b.start("sys", "hi")
+    b.step()
+    assert "fallbacks" not in claude.requests[0]
+
+
+def test_open_model_history_is_trimmed():
+    b = OllamaBackend(keep_results=2)
+    b.start("sys", "Goal: g\n\nWhat you see right now:\nYOU (1,2) ...big map...")
+    for i in range(4):
+        b.messages.append({"role": "assistant", "content": "", "tool_calls": []})
+        b.add_results([(Call(f"c{i}", "observe", {}), f"YOU ({i},0) map...", False)])
+    view = b._view()
+    tool_msgs = [m["content"] for m in view if m["role"] == "tool"]
+    assert tool_msgs[:2] == ["[old observation removed; call observe for a fresh one]"] * 2
+    assert tool_msgs[2:] == ["YOU (2,0) map...", "YOU (3,0) map..."]
+    assert "initial observation removed" in view[1]["content"] and "big map" not in view[1]["content"]
+    assert "big map" in b.messages[1]["content"]  # stored history untouched
+
+
+def test_repl_parse():
+    assert parse("move_to 10 20 1") == ("move_to", {"x": 10, "y": 20, "tolerance": 1})
+    assert parse('craft "WorkBench" 2') == ("craft", {"item": "WorkBench", "count": 2})
+    assert parse("wait 1.5") == ("wait", {"seconds": 1.5})
+    with pytest.raises(ValueError):
+        parse("mine 3")

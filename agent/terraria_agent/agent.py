@@ -1,4 +1,4 @@
-"""The agent loop: observe -> Claude picks a skill -> the bridge runs it in game -> result goes back to Claude."""
+"""The agent loop: observe -> the model picks a skill -> the bridge runs it in game -> result goes back."""
 
 from __future__ import annotations
 
@@ -8,24 +8,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import anthropic
-
+from .backends import Backend, Call, Turn
 from .bridge import BridgeClient
 from .memory import Memory
 from .prompts import system_prompt
-from .tools import TOOLS, ToolExecutor, tool_result
-
-MODEL = "claude-opus-5-5"
-BETAS = [
-    "server-side-fallback-2026-07-01",  # fallbacks="default": a declined request is retried on another model
-    "context-management-2025-06-27",  # clear old tool results (observations are big) as the run gets long
-]
-# Opus 5.5 list prices, $ per million tokens.
-PRICE = {"input": 4.00, "output": 20.00, "cache_read": 0.20, "cache_write": 5.00}
+from .tools import ToolExecutor
 
 
 @dataclass
 class RunStats:
+    price: tuple[float, float, float, float] = (0, 0, 0, 0)
     turns: int = 0
     tool_calls: int = 0
     failures: int = 0
@@ -35,26 +27,22 @@ class RunStats:
     cache_write: int = 0
     started: float = field(default_factory=time.time)
 
-    def add_usage(self, usage: Any) -> None:
-        self.input_tokens += usage.input_tokens or 0
-        self.output_tokens += usage.output_tokens or 0
-        self.cache_read += getattr(usage, "cache_read_input_tokens", 0) or 0
-        self.cache_write += getattr(usage, "cache_creation_input_tokens", 0) or 0
+    def add(self, t: Turn) -> None:
+        self.input_tokens += t.input_tokens
+        self.output_tokens += t.output_tokens
+        self.cache_read += t.cache_read
+        self.cache_write += t.cache_write
 
     @property
     def cost(self) -> float:
-        return (
-            self.input_tokens * PRICE["input"]
-            + self.output_tokens * PRICE["output"]
-            + self.cache_read * PRICE["cache_read"]
-            + self.cache_write * PRICE["cache_write"]
-        ) / 1e6
+        pi, po, pr, pw = self.price
+        return (self.input_tokens * pi + self.output_tokens * po + self.cache_read * pr + self.cache_write * pw) / 1e6
 
     def line(self) -> str:
         return (
             f"turns {self.turns}, tool calls {self.tool_calls} ({self.failures} failed), "
             f"tokens in {self.input_tokens} / cached {self.cache_read} / out {self.output_tokens}, "
-            f"~${self.cost:.2f}, {time.time() - self.started:.0f}s"
+            f"~${self.cost:.3f}, {time.time() - self.started:.0f}s"
         )
 
 
@@ -63,19 +51,17 @@ class Agent:
         self,
         bridge: BridgeClient,
         memory: Memory,
-        client: Any | None = None,
-        model: str = MODEL,
-        effort: str = "medium",
+        backend: Backend,
         log_dir: Path | None = None,
         verbose: bool = True,
+        max_cost: float | None = None,
     ):
         self.bridge = bridge
         self.memory = memory
-        self.client = client or anthropic.Anthropic()
-        self.model = model
-        self.effort = effort
+        self.backend = backend
         self.tools = ToolExecutor(bridge, memory)
         self.verbose = verbose
+        self.max_cost = max_cost
         self.log_path = None
         if log_dir:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -90,78 +76,61 @@ class Agent:
         if self.verbose:
             print(msg, flush=True)
 
-    def _call(self, system: str, messages: list[dict[str, Any]]) -> Any:
-        return self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=16000,
-            system=system,
-            tools=TOOLS,
-            messages=messages,
-            thinking={"type": "adaptive"},
-            output_config={"effort": self.effort},
-            cache_control={"type": "ephemeral"},
-            betas=BETAS,
-            fallbacks="default",
-            context_management={
-                "edits": [
-                    {
-                        "type": "clear_tool_uses_20250919",
-                        "trigger": {"type": "input_tokens", "value": 80_000},
-                        "keep": {"type": "tool_uses", "value": 8},
-                    }
-                ]
-            },
-        )
-
     def run(self, goal: str, max_turns: int = 150) -> RunStats:
-        stats = RunStats()
-        system = system_prompt(self.memory.load())
+        stats = RunStats(price=self.backend.price)
         first_look, _ = self.tools.run("observe", {})
-        # Append-only history: never edit earlier turns (keeps the cache and thinking blocks valid).
-        messages: list[dict[str, Any]] = [
-            {"role": "user", "content": f"Goal: {goal}\n\nWhat you see right now:\n{first_look}"}
-        ]
-        self._log("start", goal=goal, model=self.model, effort=self.effort)
-        self._say(f"goal: {goal}")
+        self.backend.start(system_prompt(self.memory.load()), f"Goal: {goal}\n\nWhat you see right now:\n{first_look}")
+        self._log("start", goal=goal, backend=self.backend.name, model=self.backend.model)
+        self._say(f"goal: {goal}  [{self.backend.name}: {self.backend.model}]")
 
+        nudges = 0
         while stats.turns < max_turns:
+            if self.max_cost is not None and stats.cost >= self.max_cost:
+                self._say(f"stopping: spend cap ${self.max_cost:.2f} reached")
+                break
             stats.turns += 1
-            response = self._call(system, messages)
-            stats.add_usage(response.usage)
+            turn = self.backend.step()
+            stats.add(turn)
 
-            if response.stop_reason == "refusal":
-                self._say(f"model declined: {getattr(response, 'stop_details', None)}")
-                self._log("refusal", details=getattr(response, "stop_details", None))
+            for text in turn.texts:
+                self._say(f"\n{self.backend.name}: {text}")
+                self._log("text", text=text)
+            if turn.stop == "refusal":
+                self._log("refusal", texts=turn.texts)
                 break
 
-            messages.append({"role": "assistant", "content": response.content})
-            for block in response.content:
-                if block.type == "text" and block.text.strip():
-                    self._say(f"\nclaude: {block.text.strip()}")
-                    self._log("text", text=block.text)
-
-            tool_uses = [b for b in response.content if b.type == "tool_use"]
-            if not tool_uses:
-                if response.stop_reason == "max_tokens":
-                    messages.append({"role": "user", "content": "You hit the output limit. Continue, more briefly."})
+            if not turn.calls:
+                if turn.stop == "max_tokens":
+                    self.backend.add_user("You hit the output limit. Continue, more briefly.")
                     continue
-                break  # end_turn without a tool call = Claude says the goal is done (or impossible)
-
-            results = []
-            for use in tool_uses:
-                if response.stop_reason == "max_tokens" and use is tool_uses[-1]:
-                    results.append(tool_result(use.id, "call was cut off by the output limit; resend it", True))
+                # Small models sometimes narrate instead of calling a tool. Nudge twice before accepting "done".
+                if nudges < 2 and not _sounds_finished(turn.texts):
+                    nudges += 1
+                    self.backend.add_user("Keep going: call a tool to act. If the goal is fully done, say DONE and summarize.")
                     continue
+                break
+
+            nudges = 0
+            results: list[tuple[Call, str, bool]] = []
+            for call in turn.calls:
                 stats.tool_calls += 1
-                self._say(f"  -> {use.name} {json.dumps(use.input)}")
-                text, is_error = self.tools.run(use.name, dict(use.input))
-                stats.failures += int(is_error)
-                self._say("     " + text.splitlines()[0] if use.name == "observe" else "     " + text.replace("\n", "\n     "))
-                self._log("tool", name=use.name, input=use.input, result=text, is_error=is_error)
-                results.append(tool_result(use.id, text, is_error))
-            messages.append({"role": "user", "content": results})
+                if call.args is None:
+                    text, err = f"arguments were not valid JSON: {call.raw[:200]}", True
+                else:
+                    self._say(f"  -> {call.name} {json.dumps(call.args)}")
+                    text, err = self.tools.run(call.name, call.args)
+                stats.failures += int(err)
+                self._say("     " + (text.splitlines()[0] if call.name == "observe" else text.replace("\n", "\n     ")))
+                self._log("tool", name=call.name, input=call.args, result=text, is_error=err)
+                results.append((call, text, err))
+            self.backend.add_results(results)
             self._log("usage", stats=stats.line())
 
         self._say(f"\ndone: {stats.line()}")
         self._log("end", stats=stats.line())
         return stats
+
+
+def _sounds_finished(texts: list[str]) -> bool:
+    t = " ".join(texts).lower()
+    return any(w in t for w in ("done", "complete", "finished", "impossible", "cannot", "can't"))
