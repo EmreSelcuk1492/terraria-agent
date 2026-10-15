@@ -14,6 +14,8 @@ How the tools behave:
 - Failure messages tell you what is missing (an ingredient, a station, pickaxe power, reach). Use them.
 - craft needs you standing next to the station the recipe asks for; place the station first if you have one.
 - attack stops on its own at low health. Heal or retreat before fighting again.
+- Any other action stops the moment you take damage ("INTERRUPTED"), with the world frozen. Deal with the threat
+  first: attack it if you can win, otherwise move away. Then resume what you were doing.
 
 Play sensibly: gather wood first, a work bench, then whatever the goal needs. Night brings stronger enemies; a closed
 house (walls, a door, a light) or a dug-in shelter keeps you safe. Keep replies short: a sentence of reasoning, then act.

@@ -53,6 +53,18 @@ namespace TerrariaAgentBridge
             }
         }
 
+        /// <summary>"WoodWall x4 = 1 Wood @ WorkBenches", or why it can't be crafted. Used to make failure messages actionable.</summary>
+        public static string HowToGet(int itemType)
+        {
+            for (int i = 0; i < Recipe.numRecipes; i++)
+            {
+                Recipe r = Main.recipe[i];
+                if (r.createItem.type == itemType && !r.Disabled)
+                    return $"craft: {Game.ItemName(itemType)}{(r.createItem.stack > 1 ? " x" + r.createItem.stack : "")} = {Describe(r)}";
+            }
+            return "not craftable; gather it";
+        }
+
         public static string Describe(Recipe r) =>
             string.Join(", ", r.requiredItem.Where(i => !i.IsAir).Select(i => $"{i.stack} {Game.ItemName(i.type)}")) +
             (r.requiredTile.Any(t => t >= 0) ? " @ " + string.Join("+", r.requiredTile.Where(t => t >= 0).Select(Game.TileName)) : "");

@@ -42,6 +42,17 @@ namespace TerrariaAgentBridge
             };
         }
 
+        /// <summary>One line on nearby hostiles, closest first.</summary>
+        public static string ThreatSummary(Player p)
+        {
+            var near = Main.npc.Where(n => n.active && !n.friendly && !n.townNPC && n.damage > 0)
+                .Select(n => (n, d: (n.Center - p.Center).Length() / 16f))
+                .Where(e => e.d < 30).OrderBy(e => e.d).Take(3)
+                .Select(e => $"{e.n.FullName} at ({(int)(e.n.Center.X / 16)},{(int)(e.n.Center.Y / 16)}) {(int)e.d} tiles away, hp {e.n.life}/{e.n.lifeMax}")
+                .ToList();
+            return near.Count > 0 ? "Hostiles: " + string.Join("; ", near) + "." : "No hostile in sight (fall damage, a projectile, or something off-screen).";
+        }
+
         public static Dictionary<string, object> PlayerSummary(Player p)
         {
             Item held = p.inventory[p.selectedItem];

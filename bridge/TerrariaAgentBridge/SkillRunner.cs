@@ -13,6 +13,8 @@ namespace TerrariaAgentBridge
     {
         public abstract string Name { get; }
         public virtual int TimeoutTicks => 60 * 30;
+        /// <summary>Stop the moment the player takes damage, so the agent can react while the world is frozen.</summary>
+        public virtual bool InterruptOnDamage => true;
 
         public int Ticks;
         public bool Done { get; private set; }
@@ -45,6 +47,7 @@ namespace TerrariaAgentBridge
     {
         private static Skill current;
         private static TaskCompletionSource<object> completion;
+        private static int lastLife;
 
         public static bool IsRunning => current != null;
 
@@ -53,6 +56,7 @@ namespace TerrariaAgentBridge
         {
             Cancel($"interrupted by {skill.Name}");
             current = skill;
+            lastLife = Main.LocalPlayer.statLife;
             completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             return completion.Task;
         }
@@ -68,11 +72,16 @@ namespace TerrariaAgentBridge
         {
             if (current == null) return;
             current.Ticks++;
-            if (current.Ticks > current.TimeoutTicks)
+            if (p.dead)
+                current.ForceFail($"you are dead; respawning in about {p.respawnTimer / 60 + 1}s at spawn. Call wait, then observe.");
+            else if (current.InterruptOnDamage && p.statLife < lastLife)
+                current.ForceFail($"INTERRUPTED: took {lastLife - p.statLife} damage (hp {p.statLife}/{p.statLifeMax2}). {Observation.ThreatSummary(p)} Fight (attack), move away, or heal before continuing.");
+            else if (current.Ticks > current.TimeoutTicks)
                 current.ForceFail($"{current.Name} timed out after {current.TimeoutTicks / 60}s");
             else
                 current.Tick(p);
 
+            lastLife = p.statLife;
             if (current.Done) Finish(p);
         }
 

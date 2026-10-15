@@ -37,7 +37,7 @@ namespace TerrariaAgentBridge.Skills
                 if (itemType < 0) { Fail($"unknown item '{itemName}'"); return; }
             }
             int slot = Game.FindSlot(p, i => i.type == itemType);
-            if (slot < 0) { Fail($"no {Game.ItemName(itemType)} in inventory"); return; }
+            if (slot < 0) { Fail($"no {Game.ItemName(itemType)} in inventory ({Crafting.HowToGet(itemType)})"); return; }
             Item item = p.inventory[slot];
             if (item.createTile < 0 && item.createWall <= 0) { Fail($"{Game.ItemName(itemType)} is not placeable"); return; }
 
@@ -138,6 +138,7 @@ namespace TerrariaAgentBridge.Skills
     {
         public override string Name => "attack";
         public override int TimeoutTicks => 60 * 30;
+        public override bool InterruptOnDamage => false; // taking hits is expected; it retreats at 30% on its own
         private readonly string target;
         private int npcIndex = -1;
         private int kills;

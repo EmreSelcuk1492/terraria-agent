@@ -56,6 +56,7 @@ class Agent:
         verbose: bool = True,
         max_cost: float | None = None,
         until: str | None = None,
+        freeze: bool = True,
     ):
         self.bridge = bridge
         self.memory = memory
@@ -65,6 +66,7 @@ class Agent:
         self.max_cost = max_cost
         # until="house": the run only ends when check_house passes and nothing was changed after it.
         self.until = until
+        self.freeze = freeze
         self.verified = False
         self.last_check = "check_house has not been run yet."
         self.log_path = None
@@ -80,6 +82,24 @@ class Agent:
     def _say(self, msg: str) -> None:
         if self.verbose:
             print(msg, flush=True)
+
+    def _wait_for_world(self, timeout: float = 900) -> bool:
+        """The player left the world (menu, crash, reload). Pause the run until they're back."""
+        self._say("\nworld closed: waiting for you to load back in (Ctrl-C to quit)...")
+        self._log("world_lost")
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                if self.bridge.health().get("in_world"):
+                    if self.freeze:
+                        self.bridge.set_freeze(True)
+                    self._say("back in the world, continuing.")
+                    return True
+            except Exception:
+                pass
+            time.sleep(3)
+        self._say("gave up waiting for the world.")
+        return False
 
     def run(self, goal: str, max_turns: int = 150) -> RunStats:
         stats = RunStats(price=self.backend.price)
@@ -142,6 +162,10 @@ class Agent:
                 results.append((call, text, err))
             self.backend.add_results(results)
             self._log("usage", stats=stats.line())
+            if any("not in a world" in text or "world unloaded" in text for _, text, _ in results):
+                if not self._wait_for_world():
+                    break
+                self.backend.add_user("The world was closed and reloaded while you were acting. Call observe before doing anything else.")
             if self.until and self.verified:
                 self._say("\ngoal verified in game, stopping.")
                 break
@@ -152,6 +176,8 @@ class Agent:
         self._say(f"\ndone: {stats.line()}")
         self._log("end", stats=stats.line())
         return stats
+
+
 
 
 def _sounds_finished(texts: list[str]) -> bool:

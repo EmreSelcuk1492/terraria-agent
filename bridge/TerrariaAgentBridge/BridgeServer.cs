@@ -161,6 +161,8 @@ namespace TerrariaAgentBridge
                     // Build + start the skill on the main thread, then wait (off the main thread) for it to finish.
                     var started = await OnMainThread(() =>
                     {
+                        if (Main.LocalPlayer.dead)
+                            return Error($"you are dead; respawning in about {Main.LocalPlayer.respawnTimer / 60 + 1}s. Call wait, then observe.");
                         Skill skill;
                         try { skill = SkillFactory.Create(name, args); }
                         catch (Exception e) { return Error(e.Message); }

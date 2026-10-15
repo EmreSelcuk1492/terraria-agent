@@ -131,9 +131,9 @@ namespace TerrariaAgentBridge.Skills
 
             var missing = new List<string>();
             int haveBlocks = Game.CountItem(p, blockItem), haveWalls = Game.CountItem(p, wallItem), haveDoor = Game.CountItem(p, doorItem);
-            if (haveBlocks < blocksNeeded) missing.Add($"{blocksNeeded} {Game.ItemName(blockItem)} (have {haveBlocks})");
-            if (haveWalls < wallsNeeded) missing.Add($"{wallsNeeded} {Game.ItemName(wallItem)} (have {haveWalls})");
-            if (haveDoor < 1) missing.Add($"1 {Game.ItemName(doorItem)} (have 0)");
+            if (haveBlocks < blocksNeeded) missing.Add($"{blocksNeeded} {Game.ItemName(blockItem)} (have {haveBlocks}; {Crafting.HowToGet(blockItem)})");
+            if (haveWalls < wallsNeeded) missing.Add($"{wallsNeeded} {Game.ItemName(wallItem)} (have {haveWalls}; {Crafting.HowToGet(wallItem)})");
+            if (haveDoor < 1) missing.Add($"1 {Game.ItemName(doorItem)} (have 0; {Crafting.HowToGet(doorItem)})");
             if (missing.Count > 0)
             {
                 Fail($"not enough materials for a {w}x{h} room at ({x},{y}): need {string.Join(", ", missing)}");

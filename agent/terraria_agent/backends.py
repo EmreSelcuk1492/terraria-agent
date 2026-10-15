@@ -221,6 +221,7 @@ class OllamaBackend(_ChatBackend):
             "messages": self._view(),
             "tools": _openai_tools(),
             "stream": False,
+            "think": not self.no_think,  # hard switch; the /no_think prompt hint alone is ignored when tools are on
             "options": {"num_ctx": self.num_ctx, "temperature": 0.6},
         })
         r.raise_for_status()
