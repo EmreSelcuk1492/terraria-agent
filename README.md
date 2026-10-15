@@ -97,6 +97,7 @@ cd agent
 | `mine_vein` | nearest vein of an ore (or any ore), whole vein, then the next |
 | `collect_life_crystals` | tunnel to Life Crystals, break and use them |
 | `equip_best`, `loot_chests`, `store_items`, `set_spawn` | best armor/accessories/tools; empty nearby chests; stash loot at home; respawn at a bed |
+| `tb_nav` | real pathfinding through [TerraBlind](https://github.com/Reisenbug/TerraBlind)'s navigator (jumps, drops, digs, bridges); needs TerraBlind built with `./scripts/build-terrablind.sh` and enabled. Not yet run live |
 
 ## Protocol
 
@@ -127,6 +128,10 @@ session can't open the game window): the bodyguard, the stone/extras/NPC-check v
 `tunnel_to`, `mine_vein`, `collect_life_crystals`, `return_to_surface`, `equip_best`, `loot_chests`,
 `store_items`, `set_spawn`, the HUD, and the Director on real terrain (it completes its whole plan against
 `mock_bridge.py`, and the tests cover the plan, night rules and the no-progress guard).
+
+## Credits
+
+Navigation, housing and survival work here learns from [TerraBlind](https://github.com/Reisenbug/TerraBlind) by Reisenbug (MIT), included as a pinned submodule in `third_party/TerraBlind` and built with `./scripts/build-terrablind.sh`. See [CREDITS.md](CREDITS.md) and [docs/learning/terrablind.md](docs/learning/terrablind.md).
 
 ## Honest limits of v0.1
 

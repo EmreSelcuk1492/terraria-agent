@@ -1,0 +1,92 @@
+diff --git a/Actions/PlatformStock.cs b/Actions/PlatformStock.cs
+index 9c2b9b3..890459b 100644
+--- a/Actions/PlatformStock.cs
++++ b/Actions/PlatformStock.cs
+@@ -24,6 +24,8 @@ namespace TerraBlind
+ 
+ 		public static void Tick()
+ 		{
++			// terraria-agent: platform auto-crafting is a concession too; follow the same switch.
++			if (!Concessions.Enabled) return;
+ 			var p = Main.LocalPlayer;
+ 			if (p == null || !p.active) return;
+ 			if (Main.GameUpdateCount % CheckEvery != 0) return;
+diff --git a/Core/Concessions.cs b/Core/Concessions.cs
+index fc269b3..95262e0 100644
+--- a/Core/Concessions.cs
++++ b/Core/Concessions.cs
+@@ -53,7 +53,8 @@ namespace TerraBlind
+ 		// 还原之后这些会重新露头:一次放置回到十几帧,ItemUseCoordinator 要等更久
+ 		public const float UseTimeMul = 1f;
+ 
+-		public static bool Enabled = true;
++		// terraria-agent: off by default so TerraBlind never edits our inventory unasked (no 9999 wood, no free weapon).
++		public static bool Enabled = false;
+ 
+ 		// 沾到岩浆就放不下东西 = 掉进去出不来。自救要靠【方块】向上堤,
+ 		// 不能靠平台 -- 平台放进岩浆会立即被烧毁。
+diff --git a/Debug/RecordWand.cs b/Debug/RecordWand.cs
+index 08ee5db..e195283 100644
+--- a/Debug/RecordWand.cs
++++ b/Debug/RecordWand.cs
+@@ -65,6 +65,8 @@ namespace TerraBlind
+ 
+         public override void AddRecipes()
+         {
++            // terraria-agent: debug wands only with concessions on, so they stay out of our craftable list.
++            if (!Concessions.Enabled) return;
+             CreateRecipe().AddIngredient(ItemID.DirtBlock, 1).AddTile(TileID.WorkBenches).Register();
+         }
+     }
+diff --git a/Flow/SurvivalReflex.cs b/Flow/SurvivalReflex.cs
+index 264f08f..2123c77 100644
+--- a/Flow/SurvivalReflex.cs
++++ b/Flow/SurvivalReflex.cs
+@@ -21,6 +21,8 @@ namespace TerraBlind
+ 
+ 		public static void Tick()
+ 		{
++			// terraria-agent: the reflex drinks potions (potion sickness breaks our TryHeal) and places blocks from our inventory; concession switch.
++			if (!Concessions.Enabled) return;
+ 			var p = Main.LocalPlayer;
+ 			if (p == null || !p.active || p.dead) { _firedThisEmergency = false; _prevPx = float.NaN; return; }
+ 
+diff --git a/Nav/MazeWand.cs b/Nav/MazeWand.cs
+index d85e24c..b163a63 100644
+--- a/Nav/MazeWand.cs
++++ b/Nav/MazeWand.cs
+@@ -702,6 +702,8 @@ namespace TerraBlind
+ 
+         public override void AddRecipes()
+         {
++            // terraria-agent: debug wands only with concessions on, so they stay out of our craftable list.
++            if (!Concessions.Enabled) return;
+             CreateRecipe().AddIngredient(ItemID.DirtBlock, 1).AddTile(TileID.WorkBenches).Register();
+         }
+     }
+diff --git a/Nav/NavWand.cs b/Nav/NavWand.cs
+index 5eb5820..406a8d5 100644
+--- a/Nav/NavWand.cs
++++ b/Nav/NavWand.cs
+@@ -82,6 +82,8 @@ namespace TerraBlind
+ 
+         public override void AddRecipes()
+         {
++            // terraria-agent: debug wands only with concessions on, so they stay out of our craftable list.
++            if (!Concessions.Enabled) return;
+             CreateRecipe()
+                 .AddIngredient(ItemID.DirtBlock, 1)
+                 .AddTile(TileID.WorkBenches)
+diff --git a/Perception/StateSnapshotPlayer.cs b/Perception/StateSnapshotPlayer.cs
+index d719724..0c5f76a 100644
+--- a/Perception/StateSnapshotPlayer.cs
++++ b/Perception/StateSnapshotPlayer.cs
+@@ -10,6 +10,8 @@ namespace TerraBlind
+ 		// 沿下丛林的路收会一路走到丛林深处,房子反而没盖成。直接发,别让它成为流程的坎。
+ 		public override System.Collections.Generic.IEnumerable<Item> AddStartingItems(bool mediumCoreDeath)
+ 		{
++			// terraria-agent: no free torches unless concessions are on.
++			if (!Concessions.Enabled) yield break;
+ 			yield return new Item(ItemID.Torch, 4);
+ 		}
+ 

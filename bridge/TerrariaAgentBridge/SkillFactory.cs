@@ -11,6 +11,7 @@ namespace TerrariaAgentBridge
         public static Skill Create(string name, JsonElement args) => name switch
         {
             "move_to" => new MoveTo(Int(args, "x"), Int(args, "y"), Int(args, "tolerance", 1)),
+            "tb_nav" => new TbNav(Int(args, "x"), Int(args, "y"), Str(args, "mode", "snap")),
             "mine" => new Mine(Int(args, "x"), Int(args, "y")),
             "mine_nearest" => new MineNearest(Str(args, "target"), Int(args, "count", 1)),
             "dig_down" => Game.ResolveTile(Str(args, "target", "Stone")) is var t && t >= 0
