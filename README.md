@@ -18,12 +18,14 @@ Claude plays Terraria. This is the Minecraft agent setup (Mineflayer + Voyager/M
 
 ## Setup
 
-1. **tModLoader**: install it from Steam (free, separate from Terraria). Launch it once, open **Workshop → Develop Mods** (this creates `ModSources` and installs the .NET SDK it needs).
-2. **Link + build the mod**
+1. **tModLoader**: install it from Steam (free, separate from Terraria) and launch it once.
+2. **.NET 8 SDK + build the mod**
    ```bash
-   ./scripts/link-mod.sh
+   curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 --install-dir ~/.dotnet
+   ./scripts/link-mod.sh     # symlink into ModSources (also lets tModLoader's Develop Mods menu see it)
+   ./scripts/build-mod.sh    # compiles + writes TerrariaAgentBridge.tmod into tModLoader's Mods folder
    ```
-   In tModLoader: **Workshop → Develop Mods → Terraria Agent Bridge → Build + Reload**. The first build is where any API mismatch shows up (see "Unverified" below).
+   In tModLoader: **Workshop → Manage Mods → Reload Mods** (the mod should show as enabled). `http://127.0.0.1:7979/health` answers once it's loaded.
 3. **Agent**
    ```bash
    cd agent
@@ -63,12 +65,12 @@ Skill args are in `bridge/TerrariaAgentBridge/SkillFactory.cs` and mirrored in `
 
 Absolute tile coordinates. x grows right, **y grows down**. The player's reported tile is the centre of its 2×3 body. Reach is about 5×4 tiles.
 
-## Unverified (written without a local tModLoader build)
+## Unverified in game
 
-The C# was written against the tModLoader 1.4.4 API but not compiled here. Things to check on the first build:
+The mod compiles against tModLoader 1.4.4.9 (2026.08 stable). Not yet checked in a live world:
 
-- `On_Main.DoUpdateInWorld` (world freeze hook in `BridgeSystem.cs`). If the name differs, delete the hook line and run with `--no-freeze`.
-- `ModPlayer.SetControls`, `Recipe.acceptedGroups`, `RecipeGroup.ValidItems`, `ItemID.Search`, `TileID.Sets.Ore`.
+- World freeze (`On_Main.DoUpdateInWorld` hook): that the screen and the bridge keep responding while frozen.
+- Skill feel: jump timing in `move_to`, swing-time estimates in `mine`.
 - Mouse aiming (`AgentPlayer.Aim`) writes `Main.mouseX/Y`. It's right at zoom 100%, but at other zoom levels ranged weapons may aim off.
 
 ## Honest limits of v0.1

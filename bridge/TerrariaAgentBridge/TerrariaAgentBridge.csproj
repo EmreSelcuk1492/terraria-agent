@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- tModLoader.targets lives one folder up, in ModSources/. Symlink this folder into ModSources (see README). -->
-  <Import Project="..\tModLoader.targets" />
+  <!--
+    tModLoader.targets lives in ModSources/. This folder is usually symlinked into ModSources, and MSBuild
+    resolves symlinks, so fall back to the default ModSources location on each OS.
+  -->
+  <PropertyGroup>
+    <tMLTargets Condition="Exists('..\tModLoader.targets')">..\tModLoader.targets</tMLTargets>
+    <tMLTargets Condition="'$(tMLTargets)' == '' And Exists('$(HOME)/Library/Application Support/Terraria/tModLoader/ModSources/tModLoader.targets')">$(HOME)/Library/Application Support/Terraria/tModLoader/ModSources/tModLoader.targets</tMLTargets>
+    <tMLTargets Condition="'$(tMLTargets)' == '' And Exists('$(HOME)/.local/share/Terraria/tModLoader/ModSources/tModLoader.targets')">$(HOME)/.local/share/Terraria/tModLoader/ModSources/tModLoader.targets</tMLTargets>
+    <tMLTargets Condition="'$(tMLTargets)' == '' And Exists('$(USERPROFILE)\Documents\My Games\Terraria\tModLoader\ModSources\tModLoader.targets')">$(USERPROFILE)\Documents\My Games\Terraria\tModLoader\ModSources\tModLoader.targets</tMLTargets>
+  </PropertyGroup>
+  <Import Project="$(tMLTargets)" />
   <PropertyGroup>
     <AssemblyName>TerrariaAgentBridge</AssemblyName>
     <LangVersion>latest</LangVersion>

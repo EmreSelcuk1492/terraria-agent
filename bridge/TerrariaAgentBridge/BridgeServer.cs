@@ -130,7 +130,7 @@ namespace TerrariaAgentBridge
             switch (method + " " + path)
             {
                 case "GET /health":
-                    return new Dictionary<string, object> { ["ok"] = true, ["version"] = TerrariaAgentBridge.Version, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking };
+                    return new Dictionary<string, object> { ["ok"] = true, ["version"] = TerrariaAgentBridge.BridgeVersion, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking };
 
                 case "GET /state":
                     if (!InWorld) return Error("not in a world");
