@@ -14,7 +14,9 @@ class BridgeError(RuntimeError):
 
 
 class BridgeClient:
-    def __init__(self, base_url: str = DEFAULT_URL, skill_timeout: float = 240.0):
+    def __init__(self, base_url: str = DEFAULT_URL, skill_timeout: float = 1800.0):
+        # Macro skills (obtain, build_house, mine_vein) run for minutes, longer with guard fights; a shorter read
+        # timeout would make the caller think a still-running skill failed, and its next call would cancel it.
         self._http = httpx.Client(base_url=base_url, timeout=httpx.Timeout(10.0, read=skill_timeout))
 
     def _get(self, path: str) -> dict[str, Any]:
@@ -52,6 +54,13 @@ class BridgeClient:
     def say(self, text: str) -> dict[str, Any]:
         """Show a line in the in-game chat."""
         return self._post("/say", {"text": text})
+
+    def status(self, title: str, detail: str = "") -> dict[str, Any]:
+        """The on-screen HUD panel (empty title hides it). Older bridges without /status are ignored."""
+        try:
+            return self._post("/status", {"title": title, "detail": detail})
+        except BridgeError:
+            return {"ok": False}
 
     def save(self) -> dict[str, Any]:
         return self._post("/save", {})

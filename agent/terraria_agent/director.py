@@ -376,6 +376,7 @@ class Director:
     def run_step(self, step: Step, c: Ctx) -> bool:
         idx = self.plan.index(step) + 1
         self.note(f"Step {idx}/{len(self.plan)}: {step.title}, {step.why}.", chat=True)
+        self.bridge.status(f"AI Director  {idx}/{len(self.plan)}: {step.title}", step.why)
         if step.surface and c.underground:
             self.note("Climbing back to the surface first.")
             self.call("return_to_surface", {})
@@ -469,6 +470,7 @@ class Director:
                         self.note("Not in a world; waiting.")
                         time.sleep(10)
                         continue
+                    self.bridge.set_background(True)  # cleared whenever the world unloads
                     c = self.observe()
                 except BridgeError as e:
                     self.note(f"Bridge unreachable ({e}); waiting.")
@@ -482,6 +484,7 @@ class Director:
                         idle += 1
                         if idle == 1:
                             self.note("Plan complete for now. Patrolling: more ore and chests while time remains.", chat=True)
+                            self.bridge.status("AI Director: plan complete, patrolling", "deeper ore, life crystals, unlooted chests")
                         self._free_roam(c)
                         continue
                     self._night(c)
@@ -500,6 +503,7 @@ class Director:
     def _night(self, c: Ctx) -> None:
         if self.memo.home and not c.underground:
             h = self.memo.home
+            self.bridge.status(f"AI Director: night ({c.world.get('time')}), staying home", "back to work at dawn")
             if abs(c.player.get("x", 0) - (h["x"] + 4)) > 6:
                 self.note(f"Night ({c.world.get('time')}): heading home until morning.", chat=True)
                 for name, args in _go_home(self.memo):
@@ -554,6 +558,7 @@ class Director:
             f.write("\n".join(lines) + "\n")
         self.note(f"Session over: {len(done)}/{len(self.plan)} plan steps done. Journal: {self.journal_path.name}", chat=True)
         try:
+            self.bridge.status(f"AI Director: done, {len(done)}/{len(self.plan)} steps. Journal in agent/runs/")
             self.bridge.set_background(False)
         except BridgeError:
             pass

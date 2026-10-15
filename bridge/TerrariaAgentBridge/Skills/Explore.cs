@@ -28,6 +28,17 @@ namespace TerrariaAgentBridge.Skills
         };
 
         public static int Feet(Player p) => (int)(p.Bottom.Y / 16f);
+
+        /// <summary>
+        /// Standing still vertically. velocity.Y is exactly 0 on flat ground, but on slopes vanilla's SlopeCollision
+        /// leaves a tiny value (0.0101), so `== 0` alone can wait forever. Near-zero speed held for 5 ticks also counts
+        /// (a jump apex passes in 1-2 ticks). `still` is the caller's counter.
+        /// </summary>
+        public static bool Settled(Player p, ref int still)
+        {
+            if (Math.Abs(p.velocity.Y) > 0.1f) { still = 0; return false; }
+            return p.velocity.Y == 0f || ++still >= 5;
+        }
         public static int LeftCol(Player p) => (int)(p.position.X / 16f);
         public static int RightCol(Player p) => (int)((p.position.X + p.width - 1) / 16f);
 
@@ -132,7 +143,7 @@ namespace TerrariaAgentBridge.Skills
         public static bool AtSurface(Player p)
         {
             int feet = Feet(p);
-            if (feet >= Main.worldSurface || p.velocity.Y != 0f) return false;
+            if (feet >= Main.worldSurface || Math.Abs(p.velocity.Y) > 0.1f) return false; // not == 0: slopes leave 0.0101
             for (int x = LeftCol(p); x <= RightCol(p); x++)
                 for (int y = feet - 4; y >= Math.Max(1, feet - 24); y--)
                     if (Game.Solid(x, y)) return false;
@@ -184,7 +195,7 @@ namespace TerrariaAgentBridge.Skills
         private (int x, int y) mining = (-1, -1);
         private bool childIsTorch;
 
-        private int settle, stall, bestDx = int.MaxValue, bestDy = int.MaxValue, steps;
+        private int settle, still, stall, bestDx = int.MaxValue, bestDy = int.MaxValue, steps;
         private int pillarTicks, pillarRow;
         private bool pillarPlaced;
         private int lastCol = int.MinValue, lastFeet, travel, torches, dug;
@@ -206,7 +217,7 @@ namespace TerrariaAgentBridge.Skills
             if (move == Move.Pillar && toMine.Count == 0) { PillarTick(p); return; }
 
             // Wait until standing still on the ground (falling down a shaft, landing from a jump).
-            if (p.velocity.Y != 0f) { settle = 0; return; }
+            if (!Explore.Settled(p, ref still)) { settle = 0; return; }
             if (settle < 3) { settle++; return; }
 
             if (toMine.Count > 0) { StartNextMine(p); return; }
@@ -285,7 +296,7 @@ namespace TerrariaAgentBridge.Skills
                     return;
                 }
                 mining = (x, y);
-                child = new Mine(x, y);
+                child = new Mine(x, y, tunnel: false); // no nested tunnel_to if the tile is out of reach (Mine <-> TunnelTo recursion)
                 return;
             }
         }
@@ -792,7 +803,7 @@ namespace TerrariaAgentBridge.Skills
         public override bool InterruptOnDamage => true;
 
         private Skill child;
-        private int attempts, startX, startY = -1;
+        private int attempts, startX, startY = -1, still;
         private bool recalled;
         private string lastFailure;
 
@@ -814,7 +825,7 @@ namespace TerrariaAgentBridge.Skills
                 }
                 if (!done.Ok) { lastFailure = done.Message; attempts = 99; }
             }
-            if (p.velocity.Y != 0f) return;
+            if (!Explore.Settled(p, ref still)) return;
 
             if (Explore.AtSurface(p))
             {

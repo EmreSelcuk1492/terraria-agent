@@ -18,6 +18,7 @@ namespace TerrariaAgentBridge.Skills
         private int jumpHold, jumpCooldown;
         private float bestDist = float.MaxValue;
         private int ticksSinceProgress;
+        private ulong lastFrame;
 
         public MoveTo(int x, int y, int tolerance = 1)
         {
@@ -34,6 +35,11 @@ namespace TerrariaAgentBridge.Skills
                 Succeed($"arrived at ({px},{py})");
                 return;
             }
+
+            // Not ticked for a while (the guard paused us to fight): the player may have been knocked back or
+            // chased an enemy, so judge progress from here on rather than against the old best distance.
+            if (lastFrame != 0 && Main.GameUpdateCount - lastFrame > 2) { bestDist = float.MaxValue; ticksSinceProgress = 0; }
+            lastFrame = Main.GameUpdateCount;
 
             float dist = Math.Abs(dx) + Math.Abs(dy) * 0.5f;
             if (dist < bestDist - 0.5f) { bestDist = dist; ticksSinceProgress = 0; }

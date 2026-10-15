@@ -257,9 +257,22 @@ namespace TerrariaAgentBridge.Skills
                 if (!Has(TileID.Sets.RoomNeeds.CountsAsChair)) missing.Add("chair");
                 return (false, "missing " + string.Join(", ", missing));
             }
-            WorldGen.ScoreRoom();
-            if (WorldGen.hiScore <= 0) return (false, "room is valid but unusable (evil biome tiles, or no 3x3 standing spot on the floor)");
-            return (true, $"valid NPC house ({WorldGen.numRoomTiles} tiles)");
+            // ScoreRoom scores an occupied room -1 ("occupied") unless it is told which NPC lives there, so a house the
+            // Guide already moved into would read as unusable. Score it on behalf of its resident, like vanilla's
+            // own home re-check does (ScoreRoom(npc, type)).
+            int resident = -1;
+            for (int i = 0; i < Main.maxNPCs && resident < 0; i++)
+            {
+                NPC n = Main.npc[i];
+                if (n.active && n.townNPC && !n.homeless
+                    && n.homeTileX >= WorldGen.roomX1 && n.homeTileX <= WorldGen.roomX2
+                    && n.homeTileY >= WorldGen.roomY1 && n.homeTileY <= WorldGen.roomY2 + 1)
+                    resident = i;
+            }
+            WorldGen.ScoreRoom(resident, resident >= 0 ? Main.npc[resident].type : NPCID.Guide);
+            if (WorldGen.hiScore <= 0) return (false, "room is valid but unusable (evil biome tiles, another NPC's home, or no 3x3 standing spot on the floor)");
+            string home = resident >= 0 ? $", home of {Main.npc[resident].FullName}" : "";
+            return (true, $"valid NPC house ({WorldGen.numRoomTiles} tiles{home})");
         }
 
         /// <summary>Town NPCs living in the world, and where each one's home is (or "homeless").</summary>

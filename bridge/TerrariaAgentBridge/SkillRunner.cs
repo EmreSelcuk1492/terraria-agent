@@ -58,12 +58,15 @@ namespace TerrariaAgentBridge
         // toward the skill's timeout. With Guard off, the old behaviour: a hit ends skills that InterruptOnDamage.
         public static volatile bool Guard = true;
         private static Attack defense;
-        private static int defenseTicks, guardCooldown;
+        private static int defenseTicks, guardCooldown, guardTicksUsed;
         private static string defenseTarget;
         private static readonly List<string> guardNotes = new();
-        private const int GuardRange = 6, MaxDefenseTicks = 60 * 20;
+        // A fight that ends without a kill (target out of reach, no weapon) backs off for a few seconds so the skill
+        // gets to run; the per-skill budget stops an unkillable/unreachable enemy from pausing a skill forever.
+        private const int GuardRange = 6, MaxDefenseTicks = 60 * 20, MaxGuardTicks = 60 * 90;
 
         public static bool IsRunning => current != null;
+        public static string CurrentName => current?.Name;
 
         /// <summary>Main thread. Returns a task that completes with the skill result.</summary>
         public static Task<object> Start(Skill skill)
@@ -72,6 +75,8 @@ namespace TerrariaAgentBridge
             current = skill;
             lastLife = Main.LocalPlayer.statLife;
             defense = null;
+            guardCooldown = 0;
+            guardTicksUsed = 0;
             guardNotes.Clear();
             completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             return completion.Task;
@@ -82,6 +87,17 @@ namespace TerrariaAgentBridge
             if (current == null) return;
             current.ForceFail(reason);
             Finish(Main.LocalPlayer);
+        }
+
+        /// <summary>
+        /// Player.Update returns before SetControls while the player is dead, so Tick never sees p.dead.
+        /// Called every world tick (BridgeSystem.PostUpdatePlayers) to end the skill on death.
+        /// </summary>
+        public static void CheckDead(Player p)
+        {
+            if (current == null || p == null || !p.dead) return;
+            current.ForceFail($"you are dead; respawning in about {p.respawnTimer / 60 + 1}s at spawn. Call wait, then observe.");
+            Finish(p);
         }
 
         public static void Tick(Player p)
@@ -116,14 +132,15 @@ namespace TerrariaAgentBridge
             if (defense != null)
             {
                 defenseTicks++;
+                guardTicksUsed++;
                 if (p.statLife < p.statLifeMax2 * 0.4f) TryHeal(p);
                 if (defenseTicks < MaxDefenseTicks && Skill.RunChild(defense, p)) return true;
-                if (defense.Ok) guardNotes.Add($"killed {defenseTarget}");
+                if (defense.Ok) { guardNotes.Add($"killed {defenseTarget}"); guardCooldown = 30; }
+                else { guardNotes.Add($"broke off fight with {defenseTarget}"); guardCooldown = 60 * 4; }
                 defense = null;
-                guardCooldown = 30;
                 return false;
             }
-            if (current is Attack || --guardCooldown > 0) return false;
+            if (current is Attack || --guardCooldown > 0 || guardTicksUsed >= MaxGuardTicks) return false;
             NPC threat = NearestThreat(p, hurt ? 12 : GuardRange);
             if (threat == null) return false;
             if (p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p)) return false; // too weak to fight: the low-health check decides

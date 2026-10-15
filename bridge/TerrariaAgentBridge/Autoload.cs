@@ -52,6 +52,7 @@ namespace TerrariaAgentBridge
 
             Main.menuMultiplayer = false;
             Main.ServerSideCharacter = false;
+            Main.myPlayer = 0; // as Main.SelectPlayer does for single player
             pfd.SetAsActive();
             wfd.SetAsActive();
             Main.menuMode = 10;

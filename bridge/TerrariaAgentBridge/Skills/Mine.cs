@@ -15,7 +15,7 @@ namespace TerrariaAgentBridge.Skills
     public class Mine : Skill
     {
         public override string Name => "mine";
-        public override int TimeoutTicks => 60 * 45;
+        public override int TimeoutTicks => 60 * 150; // includes a tunnel when the tile is buried
 
         private readonly int x, y;
         private int tileType = -1;
@@ -23,8 +23,10 @@ namespace TerrariaAgentBridge.Skills
         private int swingTicks, swingTicksNeeded;
         private Skill approach, collect;
         private string broke;
+        private readonly bool canTunnel;
 
-        public Mine(int x, int y) { this.x = x; this.y = y; }
+        /// <param name="tunnel">Fall back to tunnel_to when walking can't get in reach. TunnelTo's own Mine children pass false, so the two can't nest without bound.</param>
+        public Mine(int x, int y, bool tunnel = true) { this.x = x; this.y = y; canTunnel = tunnel; }
 
         public override void Tick(Player p)
         {
@@ -45,11 +47,14 @@ namespace TerrariaAgentBridge.Skills
                 if (!Game.InReach(p, x, y, p.inventory[toolSlot].tileBoost))
                 {
                     // Can't walk there (buried under dirt, up a cliff): dig a tunnel to it, once.
-                    if (approach is MoveTo) { approach = new TunnelTo(x, y, 2); return; }
+                    if (approach is MoveTo && canTunnel) { approach = new TunnelTo(x, y, 2); return; }
                     Fail($"could not get within reach of ({x},{y}): {approach.Message}");
                     return;
                 }
             }
+            // In reach: forget the finished approach, so being pushed out of reach later (the guard's fight, knockback)
+            // walks again instead of stepping a Done child (which returns false at once) and failing.
+            approach = null;
 
             Game.Hold(p, toolSlot);
             toolSlot = p.selectedItem;
@@ -206,9 +211,12 @@ namespace TerrariaAgentBridge.Skills
         public override int TimeoutTicks => 60 * 240;
         public override bool InterruptOnDamage => true;
 
+        private const int MaxSafeDrop = 20; // fall damage starts past 25 tiles
+
         private readonly int tileType, maxDepth;
-        private int startY = -1, sidesteps;
+        private int startY = -1, sidesteps, still;
         private Mine current;
+        private (int x, int y) mining;
         private Skill walk;
         private string lastBlock;
 
@@ -217,6 +225,9 @@ namespace TerrariaAgentBridge.Skills
             this.tileType = tileType;
             this.maxDepth = Math.Clamp(maxDepth, 1, 300);
         }
+
+        private static bool Diggable(int x, int y) =>
+            Game.InWorld(x, y) && Framing.GetTileSafely(x, y).HasTile && Main.tileSolid[Framing.GetTileSafely(x, y).TileType];
 
         public override void Tick(Player p)
         {
@@ -227,34 +238,46 @@ namespace TerrariaAgentBridge.Skills
             }
             if (current != null)
             {
-                if (Step(current, p)) return;
-                if (!current.Ok)
-                {
-                    // Ground that won't break (a tree on it, too hard for the pickaxe): try a column a few tiles over.
-                    lastBlock = current.Message;
-                    current = null;
-                    if (++sidesteps > 4) { Fail($"digging down stopped after {sidesteps - 1} sidesteps: {lastBlock}"); return; }
-                    int off = (sidesteps % 2 == 1 ? 1 : -1) * 3 * ((sidesteps + 1) / 2);
-                    walk = new MoveTo(Game.TileX(p) + off, Game.TileY(p), 1);
-                    return;
-                }
+                bool running = Step(current, p);
+                // Only the hole matters: drop the Mine once the tile is gone. Its walk onto the drop would step onto
+                // the edge of the other column (the body is 20px wide) and creep sideways instead of falling.
+                if (running && Diggable(mining.x, mining.y)) return;
+                if (!running && !current.Ok) { string why = current.Message; current = null; Sidestep(p, why); return; }
                 current = null;
             }
-            if (p.velocity.Y != 0) return; // still falling into the hole
+            if (!Explore.Settled(p, ref still)) return; // still falling into the hole
 
-            int by = (int)(p.Bottom.Y / 16f); // the row under your feet
+            int by = Explore.Feet(p); // the row under your feet
             if (startY < 0) startY = by;
             int depth = by - startY;
             if (Near(p, tileType)) { Succeed($"dug down {depth} tiles; {Game.TileName(tileType)} is nearby now"); return; }
             if (depth >= maxDepth) { Fail($"dug {depth} tiles down and found no {Game.TileName(tileType)}"); return; }
 
-            int left = (int)(p.position.X / 16f), right = (int)((p.position.X + p.width - 1) / 16f);
+            int left = Explore.LeftCol(p), right = Explore.RightCol(p), first = -1;
             for (int x = left; x <= right; x++)
-                if (Game.InWorld(x, by) && Framing.GetTileSafely(x, by).HasTile && Main.tileSolid[Framing.GetTileSafely(x, by).TileType])
-                {
-                    current = new Mine(x, by);
-                    return;
-                }
+            {
+                if (!Diggable(x, by)) continue;
+                // Check every column before breaking any: once the floor is gone you fall whatever is below.
+                int drop = Explore.DropDepth(x, by + 1, out bool lava);
+                if (lava || Explore.LavaNear(x, by)) { Fail($"lava under ({x},{by}) after digging {depth} tiles; stopped. Tunnel sideways (tunnel_to) away from it."); return; }
+                if (drop > MaxSafeDrop) { Fail($"digging ({x},{by}) opens a {drop}+ tile drop (fall damage) after {depth} tiles; stopped. Use tunnel_to to a point below and to the side (it digs stairs), or place platforms."); return; }
+                if (first < 0) first = x;
+            }
+            if (first < 0) { Sidestep(p, $"nothing diggable under your feet at row {by} (furniture or a non-solid tile)"); return; }
+            mining = (first, by);
+            current = new Mine(first, by, tunnel: false);
+        }
+
+        /// <summary>Ground that won't break (a tree on it, too hard for the pickaxe): try a column a few tiles over.</summary>
+        private void Sidestep(Player p, string why)
+        {
+            lastBlock = why;
+            if (++sidesteps > 4) { Fail($"digging down stopped after {sidesteps - 1} sidesteps: {lastBlock}"); return; }
+            // Offsets are from where you stand now: +3, -6, +9, -12 visits +3, -3, +6, -6 around the first blocked column
+            // (the old +3, -3, +6, -6 from the current spot walked back onto the blocked column every second time).
+            int off = (sidesteps % 2 == 1 ? 1 : -1) * 3 * sidesteps;
+            // TunnelTo, not MoveTo: inside a shaft the walls are solid, so walking sideways can't move at all.
+            walk = new TunnelTo(Game.TileX(p) + off, Game.TileY(p), 1);
         }
 
         /// <summary>At least 3 `tileType` tiles within pickaxe reach of where you stand (stone a few tiles under the dirt doesn't count).</summary>

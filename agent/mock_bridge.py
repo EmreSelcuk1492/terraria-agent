@@ -444,6 +444,9 @@ def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPSe
                 elif self.path == "/say":
                     world.said.append(body.get("text", ""))
                     self._send({"ok": True})
+                elif self.path == "/status":
+                    world.status = body.get("title", "")
+                    self._send({"ok": True})
                 elif self.path == "/save":
                     world.saves += 1
                     self._send({"ok": True})

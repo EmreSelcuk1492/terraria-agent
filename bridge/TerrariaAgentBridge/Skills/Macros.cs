@@ -192,7 +192,8 @@ namespace TerrariaAgentBridge.Skills
                 int needIng = ing.stack * batches;
                 if (haveIng < needIng)
                 {
-                    child = new Obtain(ing.type, Game.CountItem(p, ing.type) + needIng - haveIng, depth + 1, chain);
+                    int pick = PickVariant(p, Crafting.Accepted(r, ing), ing.type);
+                    child = new Obtain(pick, Game.CountItem(p, pick) + needIng - haveIng, depth + 1, chain);
                     return;
                 }
             }
@@ -205,9 +206,31 @@ namespace TerrariaAgentBridge.Skills
                 Fail($"could not craft {ItemLabel}: {Crafting.Problems(p, type)}");
         }
 
-        private static bool Gatherable(int t) =>
-            t is ItemID.Wood or ItemID.BorealWood or ItemID.RichMahogany or ItemID.Ebonwood or ItemID.Shadewood or ItemID.Pearlwood
-                or ItemID.PalmWood or ItemID.Gel || ContentSamples.ItemsByType[t].createTile >= 0;
+        // Plain blocks (StoneBlock, ores, sand) or uncraftable placeables. A crafted object (WoodPlatform, Torch, bars:
+        // frame-important tiles) is not: otherwise the reverse craft Wood <- 2 WoodPlatform passes the filter and
+        // obtain Wood tries to mine platforms instead of chopping trees.
+        /// <summary>
+        /// For "any iron bar"-style ingredients, the variant this world can actually provide: the one we hold most of,
+        /// counting its direct materials too (LeadOre for LeadBar). A world has only one of Iron/Lead, Copper/Tin...
+        /// </summary>
+        private int PickVariant(Player p, HashSet<int> accepted, int fallback)
+        {
+            if (accepted.Count <= 1) return fallback;
+            int Score(int t) => Game.CountItem(p, t) * 4 + Crafting.RecipesFor(t)
+                .SelectMany(rr => rr.requiredItem.Where(i => !i.IsAir).Select(i => Game.CountItem(p, i.type))).DefaultIfEmpty(0).Max();
+            int best = fallback, bestScore = Score(fallback);
+            foreach (int t in accepted)
+                if (!chain.Contains(t) && Score(t) > bestScore) { best = t; bestScore = Score(t); }
+            return best;
+        }
+
+        private static bool Gatherable(int t)
+        {
+            if (t is ItemID.Wood or ItemID.BorealWood or ItemID.RichMahogany or ItemID.Ebonwood or ItemID.Shadewood or ItemID.Pearlwood
+                or ItemID.PalmWood or ItemID.Gel) return true;
+            int tile = ContentSamples.ItemsByType[t].createTile;
+            return tile >= 0 && (!Main.tileFrameImportant[tile] || Crafting.RecipesFor(t).Count == 0);
+        }
 
         /// <summary>Can `t` be had without needing anything in `chain`: not in it, and gatherable or craftable from outside it.</summary>
         private static bool Reachable(int t, HashSet<int> chain) =>
@@ -299,7 +322,7 @@ namespace TerrariaAgentBridge.Skills
                 if (string.IsNullOrWhiteSpace(e)) continue;
                 if (!Extras.TryGetValue(e.Trim(), out var ex)) { notes.Add($"unknown extra '{e}' (known: {string.Join(", ", Extras.Keys)})"); continue; }
                 if (dx + ex.width > 15) { notes.Add($"no room for {e} (a house fits about two extras)"); continue; }
-                furniture.Add((ex.item, ex.tile, ex.alt, dx + ex.width / 2));
+                furniture.Add((ex.item, ex.tile, ex.alt, dx + (ex.width - 1) / 2)); // anchor column: x origin of 2-wide (0) and 3/4-wide (1) objects
                 dx += ex.width + 1;
             }
             W = Math.Clamp(Math.Max(width, dx + 1), 10, 16); // room for every extra (BuildRoom caps width at 16)
@@ -341,7 +364,8 @@ namespace TerrariaAgentBridge.Skills
                     if (door) todo.Enqueue(_ => new Obtain(ItemID.WoodenDoor, 1, 0));
                     foreach (var f in furniture)
                         if (!InRoom(f.tileA, f.tileB)) todo.Enqueue(_ => new Obtain(f.item, 1, 0));
-                    if (!InRoom(TileID.Torches, TileID.Torches) && Game.CountItem(p, ItemID.Torch) == 0)
+                    // Not gated on carrying a torch now: a Furnace crafted above can use up the ones in the inventory.
+                    if (!InRoom(TileID.Torches, TileID.Torches))
                         todo.Enqueue(_ => Optional(new Obtain(ItemID.Torch, 1, 0)));
                     if (blocks > 0) todo.Enqueue(_ => new Obtain(blockItem, blocks, 0));
                     return;
@@ -373,6 +397,9 @@ namespace TerrariaAgentBridge.Skills
         }
 
         private Skill Optional(Skill s) { optional.Add(s); return s; }
+
+        /// <summary>Sites are world coordinates; forget them when the world unloads.</summary>
+        internal static void ForgetSites() { sites.Clear(); lastSite = null; }
 
         private bool InRoom(int tileA, int tileB)
         {

@@ -107,7 +107,7 @@ namespace TerrariaAgentBridge
                 ["rock_layer_y"] = (int)Main.rockLayer,
                 ["town_npcs"] = Skills.Housing.TownNpcs(),
                 ["max_life"] = Main.LocalPlayer.statLifeMax,
-                ["defense"] = Main.LocalPlayer.statDefense,
+                ["defense"] = (int)Main.LocalPlayer.statDefense, // DefenseStat struct; serialized raw it is not a number
             };
         }
 

@@ -116,13 +116,17 @@ Skill args are in `bridge/TerrariaAgentBridge/SkillFactory.cs` and mirrored in `
 
 Absolute tile coordinates. x grows right, **y grows down**. The player's reported tile is the centre of its 2×3 body. Reach is about 5×4 tiles.
 
-## Unverified in game
+## Verified vs. unverified in game
 
-The mod compiles against tModLoader 1.4.4.9 (2026.08 stable). Not yet checked in a live world:
+Checked in a live world (tModLoader 2026.08, small world): the bridge, observation, `move_to`, `mine`, `obtain` for
+wood/workbench/door/table/chair, `build_house` (wood, 10x6), `dig_down` reaching buried stone, `attack nearest`,
+autoload + `/quit` + `scripts/cycle.sh`, and the background (unfocused) patch keeping skills and game time running.
 
-- World freeze (`On_Main.DoUpdateInWorld` hook): that the screen and the bridge keep responding while frozen.
-- Skill feel: jump timing in `move_to`, swing-time estimates in `mine`.
-- Mouse aiming (`AgentPlayer.Aim`) writes `Main.mouseX/Y`. It's right at zoom 100%, but at other zoom levels ranged weapons may aim off.
+Written and reviewed but **not yet run in a live world** (the Mac's screen locked mid-session, and a locked
+session can't open the game window): the bodyguard, the stone/extras/NPC-check version of `build_house`,
+`tunnel_to`, `mine_vein`, `collect_life_crystals`, `return_to_surface`, `equip_best`, `loot_chests`,
+`store_items`, `set_spawn`, the HUD, and the Director on real terrain (it completes its whole plan against
+`mock_bridge.py`, and the tests cover the plan, night rules and the no-progress guard).
 
 ## Honest limits of v0.1
 

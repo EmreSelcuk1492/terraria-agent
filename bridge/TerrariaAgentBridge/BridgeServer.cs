@@ -144,6 +144,15 @@ namespace TerrariaAgentBridge
                         ["player"] = InWorld ? Main.ActivePlayerFileData?.Name : null, ["world"] = InWorld ? Main.worldName : null,
                     };
 
+                case "POST /status":
+                {
+                    // The on-screen HUD panel (HudSystem): what the AI is working on. Empty title hides it.
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    HudSystem.Title = doc.RootElement.TryGetProperty("title", out var ti) ? ti.GetString() ?? "" : "";
+                    HudSystem.Detail = doc.RootElement.TryGetProperty("detail", out var de) ? de.GetString() ?? "" : "";
+                    return new Dictionary<string, object> { ["ok"] = true };
+                }
+
                 case "POST /say":
                 {
                     // Narration: show a line in the in-game chat (the player sees what the AI is doing and why).
