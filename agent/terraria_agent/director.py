@@ -280,6 +280,7 @@ class Director:
         self.calls = 0
         self.last_potion = 0.0
         self.dead = False
+        self.roof: list[tuple[int, int]] = []  # bunker roof tiles from the last dig_in, mined on the way out
 
     # -- io
 
@@ -357,27 +358,40 @@ class Director:
                 self.call("use_item", {"item": potion})
                 return True
             # Standing still is how the first real run died 8 times at spawn: `wait` refuses with hostiles near,
-            # so the character took hits without swinging. Fight what's adjacent, otherwise get away from it.
-            near = c.hostiles(4)
+            # so the character took hits without swinging. With an enemy on top of us, swing (desperate: the attack
+            # skill otherwise refuses below 30%); with room to move, dig in and regenerate under a sealed roof.
+            near = c.hostiles(3)
             if near:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): fighting off {near[0]['name']}.", chat=False)
-                self.call("attack", {"target": "nearest", "max_kills": 2})
-            elif self.memo.home and not c.underground:
+                ok, _ = self.call("attack", {"target": "nearest", "max_kills": 2, "desperate": True})
+                if not ok:  # unreachable or no weapon: the bunker is the only other way out
+                    self._shelter(c, until_hp=0.7)
+            elif self.memo.home and not c.underground and c.is_day:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): retreating home to recover.", chat=True)
                 for name, args in _go_home(self.memo):
                     self.call(name, args)
-            elif not c.underground:
-                self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}), no home: digging in to recover.", chat=True)
-                self._shelter(c)
             else:
-                self.call("wait", {"seconds": 10})
+                self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): digging in to recover.", chat=True)
+                self._shelter(c, until_hp=0.7)
             return True
         return False
 
-    def _shelter(self, c: Ctx) -> None:
-        """No house to hide in: tunnel a few tiles down and to the side, out of reach of surface zombies."""
-        p = c.player
-        self.call("tunnel_to", {"x": p.get("x", 0) + 6, "y": p.get("y", 0) + 12, "tolerance": 2})
+    def _shelter(self, c: Ctx, until_hp: float = 0.8, until_day: bool = False) -> None:
+        """No house to hide in: a sealed 2x4 hole under our feet (surface zombies can't dig), wait there."""
+        ok, msg = self.call("dig_in", {"wait_seconds": 600 if until_day else 60, "until_hp": until_hp, "until_day": until_day})
+        if ok:
+            self.roof = [(int(x), int(y)) for x, y in re.findall(r"\((-?\d+), (-?\d+)\)", msg.split("Roof at", 1)[-1])] \
+                if "Roof at" in msg else []
+        elif not msg.startswith(("LOW HEALTH", "you are dead")):
+            # dig_in refused (no pickaxe, lava, a chest underfoot): fall back to the old sideways tunnel.
+            p = c.player
+            self.call("tunnel_to", {"x": p.get("x", 0) + 6, "y": p.get("y", 0) + 12, "tolerance": 2})
+
+    def _leave_shelter(self) -> None:
+        """Open the bunker roof before going back to work (return_to_surface would too, but not every step climbs)."""
+        roof, self.roof = self.roof, []
+        for x, y in roof:
+            self.call("mine", {"x": x, "y": y})
 
     def runnable(self, c: Ctx) -> list[Step]:
         now = time.time()
@@ -515,6 +529,8 @@ class Director:
                     self._night(c)
                     continue
                 idle = 0
+                if self.roof:
+                    self._leave_shelter()
                 self.run_step(step, c)
                 self.memo.save(self.memo_path)
                 if time.time() - self.last_save > 300:
@@ -528,8 +544,9 @@ class Director:
     def _night(self, c: Ctx) -> None:
         if not self.memo.home and not c.underground:
             self.bridge.status(f"AI Director: night ({c.world.get('time')}), no home yet", "sheltering underground until dawn")
-            self.note(f"Night ({c.world.get('time')}) and no home: sheltering underground until morning.", chat=True)
-            self._shelter(c)
+            self.note(f"Night ({c.world.get('time')}) and no home: digging in until morning.", chat=True)
+            self._shelter(c, until_day=True)
+            return
         if self.memo.home and not c.underground:
             h = self.memo.home
             self.bridge.status(f"AI Director: night ({c.world.get('time')}), staying home", "back to work at dawn")

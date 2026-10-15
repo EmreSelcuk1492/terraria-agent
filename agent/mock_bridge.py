@@ -226,7 +226,9 @@ class World:
             f" missing: {', '.join(missing)}" if missing else "")
         return made > 0, f"crafted {made}/{count} {item}.{why}", 1
 
-    def s_attack(self, target: str = "nearest", max_kills: int = 1):
+    def s_attack(self, target: str = "nearest", max_kills: int = 1, desperate: bool = False):
+        if not desperate and self.player["hp"] < self.player["max_hp"] * 0.3:
+            return False, f"retreating: health {self.player['hp']}/{self.player['max_hp']}", 1
         if not self.npcs:
             return False, "no hostile within 40 tiles", 1
         n = self.npcs.pop(0)
@@ -406,6 +408,11 @@ class World:
 
     def s_set_spawn(self):
         return False, "no Bed within 30 tiles or in inventory: craft one at a Sawmill: 15 Wood + 5 Silk", 1
+
+    def s_dig_in(self, wait_seconds: float = 60, until_hp: float = 0.8, until_day: bool = False):
+        x, y = self.player["x"], self.player["y"]
+        self.player["hp"] = max(self.player["hp"], int(self.player["max_hp"] * until_hp))
+        return True, f"dug in at ({x},{y + 4}), sealed 2/2 open tiles; hp regenerated. Roof at ({x}, {y + 1}) ({x + 1}, {y + 1}): mine it to get out.", int(wait_seconds * 60)
 
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)

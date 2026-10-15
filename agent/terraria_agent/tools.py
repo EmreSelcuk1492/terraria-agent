@@ -81,8 +81,17 @@ TOOLS: list[dict[str, Any]] = [
     _tool(
         "attack",
         "Fight hostile NPCs with your best weapon until `max_kills` die or nothing is left within 40 tiles. "
-        "target: 'nearest' or part of an NPC name (e.g. 'Slime'). Stops by itself below 30% health.",
-        {"target": _STR, "max_kills": _INT},
+        "target: 'nearest' or part of an NPC name (e.g. 'Slime'). Stops by itself below 30% health unless "
+        "desperate=true (use that when an enemy is already on top of you and running isn't possible).",
+        {"target": _STR, "max_kills": _INT, "desperate": {"type": "boolean"}},
+    ),
+    _tool(
+        "dig_in",
+        "Emergency shelter without a house: dig a 2-wide hole 4 tiles down where you stand, seal the roof and open "
+        "sides with blocks, then wait inside until health reaches `until_hp` (fraction, default 0.8) and, with "
+        "until_day=true, until morning (at most `wait_seconds`, default 60, max 600). Works at low health. "
+        "Mine the roof tiles it reports (or return_to_surface) to get out.",
+        {"wait_seconds": {"type": "number"}, "until_hp": {"type": "number"}, "until_day": {"type": "boolean"}},
     ),
     _tool(
         "use_item",
@@ -182,7 +191,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
-               "build_house", "check_house", "tunnel_to", "mine_vein", "collect_life_crystals", "return_to_surface",
+               "build_house", "check_house", "tunnel_to", "dig_in", "mine_vein", "collect_life_crystals", "return_to_surface",
                "equip_best", "loot_chests", "store_items", "set_spawn"}
 
 

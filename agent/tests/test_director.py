@@ -74,3 +74,34 @@ def test_memo_round_trip(tmp_path):
     m = Memo(houses=[{"x": 1, "y": 2, "material": "Wood", "npc_valid": True}], done=["gear"])
     m.save(tmp_path / "m.json")
     assert Memo.load(tmp_path / "m.json").houses[0]["npc_valid"]
+
+
+def test_low_health_cornered_fights_desperately(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.player["hp"] = 16  # run 3: "retreating: health 16/100" 277 times without a swing
+    world.npcs = [{"name": "Zombie", "x": world.player["x"] + 1, "y": world.player["y"], "hp": 45, "max_hp": 45,
+                   "hostile": True, "boss": False}]
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    assert d.safety(d.observe())
+    assert not world.npcs, "the desperate attack swung and killed the zombie"
+
+
+def test_low_health_with_room_digs_in_and_leaves(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.player["hp"] = 16
+    world.npcs = []
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    assert d.safety(d.observe())
+    assert world.player["hp"] >= 70 and len(d.roof) == 2
+    d._leave_shelter()
+    assert d.roof == []
+
+
+def test_night_without_home_digs_in_until_day(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.ticks = 54000  # dusk
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = []
+    d.call = lambda name, args: (calls.append((name, args)), (True, "dug in at (1,2). Roof at (1, 1) (2, 1): mine it"))[1]
+    d._night(d.observe())
+    assert calls[0] == ("dig_in", {"wait_seconds": 600, "until_hp": 0.8, "until_day": True})

@@ -169,7 +169,7 @@ namespace TerrariaAgentBridge
                 case "POST /time":
                 {
                     // Testing aid for headless runs (sim/): start a run at a known time of day so one bad first night
-                    // doesn't decide it. {"at": "dawn" | "noon" | "dusk" | "midnight"}
+                    // doesn't decide it. {"at": "dawn" | "noon" | "dusk" | "midnight", "clear": bool}
                     using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                     string at = doc.RootElement.TryGetProperty("at", out var a) ? a.GetString() ?? "" : "";
                     if (!InWorld) return Error("not in a world");
@@ -179,11 +179,22 @@ namespace TerrariaAgentBridge
                         _ => (true, -1.0),
                     };
                     if (t < 0) return Error("at must be dawn, noon, dusk or midnight");
+                    // Jumping to daytime also removes the hostiles left over from the night: they don't despawn on
+                    // their own while the player stands among them, so every respawn landed back in the same fight.
+                    bool clear = !doc.RootElement.TryGetProperty("clear", out var c) ? day : c.ValueKind == JsonValueKind.True;
                     return await OnMainThread(() =>
                     {
                         Main.dayTime = day;
                         Main.time = t;
-                        return new Dictionary<string, object> { ["ok"] = true, ["at"] = at };
+                        int cleared = 0;
+                        if (clear)
+                            foreach (NPC n in Main.npc)
+                                if (n.active && !n.friendly && !n.townNPC && n.damage > 0 && !n.boss)
+                                {
+                                    n.active = false;
+                                    cleared++;
+                                }
+                        return new Dictionary<string, object> { ["ok"] = true, ["at"] = at, ["cleared"] = cleared };
                     });
                 }
 

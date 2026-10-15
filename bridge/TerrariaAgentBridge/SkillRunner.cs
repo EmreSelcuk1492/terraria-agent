@@ -17,6 +17,11 @@ namespace TerrariaAgentBridge
         public virtual int TimeoutTicks => 60 * 30;
         /// <summary>Stop the moment the player takes damage, so the agent can react while the world is frozen.</summary>
         public virtual bool InterruptOnDamage => true;
+        /// <summary>
+        /// A way out of danger (dig_in, a desperate attack). The runner's low-health kill skips it: ending the escape
+        /// because health is low is what kept the character standing in the fight that was taking it.
+        /// </summary>
+        public virtual bool Survival => false;
 
         public int Ticks;
         public bool Done { get; private set; }
@@ -113,7 +118,7 @@ namespace TerrariaAgentBridge
             current.Ticks++;
             if (p.dead)
                 current.ForceFail($"you are dead; respawning in about {p.respawnTimer / 60 + 1}s at spawn. Call wait, then observe.");
-            else if (Guard && hurt && p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p))
+            else if (Guard && hurt && !current.Survival && p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p))
                 current.ForceFail($"LOW HEALTH {p.statLife}/{p.statLifeMax2} and no healing potion. {Observation.ThreatSummary(p)} Get to safety (home, or away from enemies) and wait to regenerate before continuing.");
             else if (!Guard && current.InterruptOnDamage && hurt)
                 current.ForceFail($"INTERRUPTED: took {lastLife - p.statLife} damage (hp {p.statLife}/{p.statLifeMax2}). {Observation.ThreatSummary(p)} Fight (attack), move away, or heal before continuing.");

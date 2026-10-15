@@ -137,7 +137,10 @@ namespace TerrariaAgentBridge.Skills
         }
     }
 
-    /// <summary>Fight the nearest hostile NPC (or a named one) with the best weapon. Bails out at low health.</summary>
+    /// <summary>
+    /// Fight the nearest hostile NPC (or a named one) with the best weapon. Bails out at low health unless desperate:
+    /// with an enemy already on top of you, refusing to swing just means taking the hits anyway.
+    /// </summary>
     public class Attack : Skill
     {
         public override string Name => "attack";
@@ -149,9 +152,12 @@ namespace TerrariaAgentBridge.Skills
         private readonly int maxKills;
         private string fellBack;
         private readonly MoveTo mover = new(0, 0);
+        private readonly bool desperate;
+        public override bool Survival => desperate;
 
-        public Attack(string target, int maxKills)
+        public Attack(string target, int maxKills, bool desperate = false)
         {
+            this.desperate = desperate;
             this.target = string.IsNullOrWhiteSpace(target) ? "nearest" : target.Trim();
             this.maxKills = Math.Clamp(maxKills, 1, 20);
         }
@@ -159,7 +165,7 @@ namespace TerrariaAgentBridge.Skills
         public override void Tick(Player p)
         {
             if (p.dead) { Fail("you died"); return; }
-            if (p.statLife < p.statLifeMax2 * 0.3f) { Fail($"retreating: health {p.statLife}/{p.statLifeMax2}. Heal (use_item a potion) or run."); return; }
+            if (!desperate && p.statLife < p.statLifeMax2 * 0.3f) { Fail($"retreating: health {p.statLife}/{p.statLifeMax2}. Heal (use_item a potion) or run."); return; }
 
             if (npcIndex < 0 || !Main.npc[npcIndex].active || Main.npc[npcIndex].life <= 0)
             {
