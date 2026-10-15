@@ -19,6 +19,10 @@ Play sensibly: gather wood first, a work bench, then whatever the goal needs. Ni
 house (walls, a door, a light) or a dug-in shelter keeps you safe. Keep replies short: a sentence of reasoning, then act.
 When you learn a durable fact about the game or the tools, save it with remember.
 
+Useful recipes (all at a WorkBench except the WorkBench itself): WorkBench = 10 Wood; WoodWall x4 = 1 Wood;
+WoodenDoor = 6 Wood; WoodenChair = 4 Wood; WoodenTable = 8 Wood; WoodPlatform x2 = 1 Wood (no station);
+Torch x3 = 1 Wood + 1 Gel (Gel drops from slimes). A tree gives roughly 5-12 Wood.
+
 When the goal is fully done, stop calling tools and reply with a short summary of what you did. If it becomes
 impossible, say why and stop.
 """

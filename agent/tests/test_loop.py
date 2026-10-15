@@ -66,7 +66,7 @@ def test_observe_renders_map(bridge, tmp_path):
     assert not err
     assert "YOU (50,98)" in text and "MAP origin=(20,81)" in text
     assert "x=30" in text and "y=98   " in text and "@" in text
-    assert "Trees x5" in text
+    assert "Trees x10" in text
 
 
 def test_skill_failure_is_error_with_reason(bridge, tmp_path):
@@ -147,3 +147,28 @@ def test_repl_parse():
     assert parse("wait 1.5") == ("wait", {"seconds": 1.5})
     with pytest.raises(ValueError):
         parse("mine 3")
+
+
+def test_until_house_pushes_back_then_stops_when_verified(bridge, tmp_path):
+    turns = [
+        [NS(type="text", text="All done!")],  # premature claim: must be pushed back
+        [call(1, "check_house", {"x": 53, "y": 98})],  # fails: no room yet
+        [call(2, "mine_nearest", {"target": "Trees", "count": 5}), call(14, "mine_nearest", {"target": "Trees", "count": 5})],
+        [call(3, "craft", {"item": "WorkBench", "count": 2})],
+        [call(4, "place", {"item": "WorkBench", "x": 51, "y": 99})],
+        [call(5, "craft", {"item": "WoodWall", "count": 8}), call(6, "craft", {"item": "WoodenDoor", "count": 1})],
+        [call(7, "craft", {"item": "WoodenChair", "count": 1}), call(8, "craft", {"item": "WoodenTable", "count": 1})],
+        [call(9, "build_room", {"x": 50, "y": 100, "width": 8, "height": 6, "block": "Wood", "wall": "WoodWall", "door": "WoodenDoor"})],
+        [call(10, "place", {"item": "WorkBench", "x": 52, "y": 99}), call(11, "place", {"item": "WoodenChair", "x": 54, "y": 99}),
+         call(12, "place", {"item": "WoodenTable", "x": 55, "y": 99})],
+        [call(13, "check_house", {"x": 53, "y": 98})],
+        [NS(type="text", text="should never be requested")],
+    ]
+    claude = ScriptedClaude(turns)
+    bridge.skill("wait", {"seconds": 0})  # warm-up no-op
+    agent = Agent(bridge, Memory(tmp_path / "l.md"), ClaudeBackend(client=claude), verbose=False, until="house")
+    stats = agent.run("Build a wooden house with a chair, table and work bench", max_turns=20)
+    assert agent.verified and "HOUSE OK" in agent.last_check
+    assert stats.turns == 10  # stopped right after the passing check
+    pushback = claude.requests[1]["messages"][-1]["content"]
+    assert "Not done yet" in pushback

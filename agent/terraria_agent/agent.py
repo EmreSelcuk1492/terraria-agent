@@ -55,6 +55,7 @@ class Agent:
         log_dir: Path | None = None,
         verbose: bool = True,
         max_cost: float | None = None,
+        until: str | None = None,
     ):
         self.bridge = bridge
         self.memory = memory
@@ -62,6 +63,10 @@ class Agent:
         self.tools = ToolExecutor(bridge, memory)
         self.verbose = verbose
         self.max_cost = max_cost
+        # until="house": the run only ends when check_house passes and nothing was changed after it.
+        self.until = until
+        self.verified = False
+        self.last_check = "check_house has not been run yet."
         self.log_path = None
         if log_dir:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -103,8 +108,15 @@ class Agent:
                 if turn.stop == "max_tokens":
                     self.backend.add_user("You hit the output limit. Continue, more briefly.")
                     continue
+                if self.until and not self.verified:
+                    self._say("  (not verified yet, pushing back)")
+                    self.backend.add_user(
+                        "Not done yet. The goal is only complete when check_house passes after your last change. "
+                        f"Latest check: {self.last_check} Keep working; call tools."
+                    )
+                    continue
                 # Small models sometimes narrate instead of calling a tool. Nudge twice before accepting "done".
-                if nudges < 2 and not _sounds_finished(turn.texts):
+                if not self.until and nudges < 2 and not _sounds_finished(turn.texts):
                     nudges += 1
                     self.backend.add_user("Keep going: call a tool to act. If the goal is fully done, say DONE and summarize.")
                     continue
@@ -120,12 +132,23 @@ class Agent:
                     self._say(f"  -> {call.name} {json.dumps(call.args)}")
                     text, err = self.tools.run(call.name, call.args)
                 stats.failures += int(err)
+                if call.name == "check_house":
+                    self.verified = not err
+                    self.last_check = text.splitlines()[0]
+                elif call.name not in ("observe", "remember"):
+                    self.verified = False
                 self._say("     " + (text.splitlines()[0] if call.name == "observe" else text.replace("\n", "\n     ")))
                 self._log("tool", name=call.name, input=call.args, result=text, is_error=err)
                 results.append((call, text, err))
             self.backend.add_results(results)
             self._log("usage", stats=stats.line())
+            if self.until and self.verified:
+                self._say("\ngoal verified in game, stopping.")
+                break
 
+        if self.until:
+            self._say(f"\nverified: {'YES' if self.verified else 'NO'} ({self.last_check})")
+            self._log("verified", ok=self.verified, check=self.last_check)
         self._say(f"\ndone: {stats.line()}")
         self._log("end", stats=stats.line())
         return stats

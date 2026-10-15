@@ -45,6 +45,7 @@ def main() -> int:
     ap.add_argument("--bridge", default=DEFAULT_URL)
     ap.add_argument("--max-turns", type=int, default=150)
     ap.add_argument("--max-cost", type=float, help="stop once estimated spend reaches this many dollars")
+    ap.add_argument("--until", choices=["house"], help="don't stop until the goal is verified in game (house = check_house passes)")
     ap.add_argument("--no-freeze", action="store_true", help="let the world keep running while the model thinks")
     ap.add_argument("--memory", type=Path, default=ROOT / "lessons.md")
     ap.add_argument("--logs", type=Path, default=ROOT / "runs")
@@ -75,7 +76,7 @@ def main() -> int:
 
     if not a.goal:
         ap.error("--goal is required")
-    agent = Agent(bridge, Memory(a.memory), make_backend(a), log_dir=a.logs, max_cost=a.max_cost)
+    agent = Agent(bridge, Memory(a.memory), make_backend(a), log_dir=a.logs, max_cost=a.max_cost, until=a.until)
     if not a.no_freeze:
         bridge.set_freeze(True)
     try:

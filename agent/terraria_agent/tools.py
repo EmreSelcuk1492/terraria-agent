@@ -86,6 +86,23 @@ TOOLS: list[dict[str, Any]] = [
         {"seconds": {"type": "number"}},
     ),
     _tool(
+        "build_room",
+        "Build an enclosed room in one go: solid block frame, background walls inside, a door in the right wall. "
+        "(x, y) is the bottom-left corner: x = left wall column, y = floor row (usually the ground row under your feet, "
+        "about your y+2). Width/height include the frame (10 x 6 is a good starter room: needs ~26 Wood, 32 WoodWall, "
+        "1 WoodenDoor; existing ground is reused). On failure it lists missing materials.",
+        {"x": _INT, "y": _INT, "width": _INT, "height": _INT,
+         "block": {"type": "string", "description": "block item for the frame, e.g. Wood"},
+         "wall": {"type": "string", "description": "wall item, e.g. WoodWall"},
+         "door": {"type": "string", "description": "door item, e.g. WoodenDoor"}},
+    ),
+    _tool(
+        "check_house",
+        "Inspect the room containing tile (x, y) (pick an air tile inside, e.g. one above the floor). Reports whether it is "
+        "enclosed, fully walled, has a door, a chair, a table and a work bench, and exactly what is missing.",
+        {"x": _INT, "y": _INT},
+    ),
+    _tool(
         "remember",
         "Save a short lesson for future runs (e.g. 'Furnace needs 20 Stone + 4 Wood + 3 Torch at a WorkBench'). "
         "Only for durable, reusable facts about the game or about how these tools behave.",
@@ -93,7 +110,7 @@ TOOLS: list[dict[str, Any]] = [
     ),
 ]
 
-SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "place", "craft", "attack", "use_item", "wait"}
+SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "place", "craft", "attack", "use_item", "wait", "build_room", "check_house"}
 
 
 class ToolExecutor:

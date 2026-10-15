@@ -18,6 +18,17 @@ namespace TerrariaAgentBridge.Skills
 
         public Place(string item, int x, int y) { itemName = item; this.x = x; this.y = y; }
 
+        private static (int, int)? FindPlaced(int tileType, int cx, int cy)
+        {
+            for (int j = cy - 2; j <= cy + 2; j++)
+            for (int i = cx - 2; i <= cx + 2; i++)
+            {
+                Tile t = Framing.GetTileSafely(i, j);
+                if (t.HasTile && t.TileType == tileType) return (i, j);
+            }
+            return null;
+        }
+
         public override void Tick(Player p)
         {
             if (itemType < 0)
@@ -49,12 +60,23 @@ namespace TerrariaAgentBridge.Skills
                     Fail($"({x},{y}) overlaps the player; step aside first");
                     return;
                 }
-                bool placed = WorldGen.PlaceTile(x, y, item.createTile, mute: false, forced: false, plr: p.whoAmI, style: item.placeStyle);
-                if (!placed || !Framing.GetTileSafely(x, y).HasTile)
+                // Multi-tile furniture anchors differently per object; try the given tile, then nearby anchors.
+                (int, int)? at = null;
+                foreach (var (ax, ay) in new[] { (x, y), (x, y - 1), (x - 1, y), (x + 1, y), (x - 1, y - 1), (x + 1, y - 1), (x, y + 1) })
                 {
-                    Fail($"could not place {Game.ItemName(itemType)} at ({x},{y}): needs support below/beside, or more free space (furniture is multi-tile; give the bottom-left tile on solid ground)");
+                    if (Framing.GetTileSafely(ax, ay).HasTile) continue;
+                    if (!WorldGen.PlaceTile(ax, ay, item.createTile, mute: false, forced: false, plr: p.whoAmI, style: item.placeStyle)) continue;
+                    at = FindPlaced(item.createTile, x, y);
+                    if (at != null) break;
+                }
+                if (at == null)
+                {
+                    Fail($"could not place {Game.ItemName(itemType)} at ({x},{y}): needs solid floor right below, and enough free space (furniture is 2-3 tiles wide/tall)");
                     return;
                 }
+                Game.ConsumeOne(p, slot);
+                Succeed($"placed {Game.ItemName(itemType)} at {at}");
+                return;
             }
             else
             {

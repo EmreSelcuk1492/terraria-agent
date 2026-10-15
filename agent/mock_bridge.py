@@ -22,8 +22,12 @@ RECIPES = {
     "Torch": ({"Wood": 1, "Gel": 1}, None, 3),
     "Furnace": ({"StoneBlock": 20, "Wood": 4, "Torch": 3}, "WorkBenches", 1),
     "CopperBar": ({"CopperOre": 3}, "Furnaces", 1),
+    "WoodWall": ({"Wood": 1}, "WorkBenches", 4),
+    "WoodenDoor": ({"Wood": 6}, "WorkBenches", 1),
+    "WoodenChair": ({"Wood": 4}, "WorkBenches", 1),
+    "WoodenTable": ({"Wood": 8}, "WorkBenches", 1),
 }
-PLACES = {"WorkBench": "WorkBenches", "Furnace": "Furnaces", "DirtBlock": "Dirt", "StoneBlock": "Stone", "WoodPlatform": "Platforms"}
+PLACES = {"WorkBench": "WorkBenches", "Furnace": "Furnaces", "WoodenChair": "Chairs", "WoodenTable": "Tables", "Wood": "WoodBlock", "DirtBlock": "Dirt", "StoneBlock": "Stone", "WoodPlatform": "Platforms"}
 DROPS = {"Trees": ("Wood", 8), "Dirt": ("DirtBlock", 1), "Stone": ("StoneBlock", 1), "CopperOre": ("CopperOre", 1)}
 
 
@@ -37,12 +41,13 @@ class World:
             self.tiles[(x, GROUND_Y)] = "Dirt"
             for y in range(GROUND_Y + 1, GROUND_Y + 30):
                 self.tiles[(x, y)] = "Stone"
-        for x in (58, 63, 71, 40, 33):
+        for x in (58, 63, 71, 40, 33, 80, 86, 92, 25, 18):
             for y in range(GROUND_Y - 8, GROUND_Y):
                 self.tiles[(x, y)] = "Trees"
         for x in range(44, 48):
             self.tiles[(x, GROUND_Y + 4)] = "CopperOre"
         self.npcs = [{"name": "Green Slime", "x": 60, "y": GROUND_Y - 1, "hp": 14, "max_hp": 14, "hostile": True, "boss": False}]
+        self.rooms: list[tuple[int, int, int, int]] = []  # x1, y1, x2, y2 interior bounds
         self.freeze = False
         self.ticks = 0
 
@@ -199,6 +204,30 @@ class World:
         if self.inventory.get(item, 0) <= 0:
             return False, f"no '{item}' in inventory", 1
         return True, f"used {item}", 20
+
+    def s_build_room(self, x: int, y: int, width: int = 10, height: int = 6, block: str = "Wood", wall: str = "WoodWall", door: str = "WoodenDoor"):
+        blocks = 2 * width + 2 * (height - 2) - 3 - width  # floor row is the existing ground
+        walls = (width - 2) * (height - 2)
+        need = {block: blocks, wall: walls, door: 1}
+        missing = [f"{n} {k} (have {self.inventory.get(k, 0)})" for k, n in need.items() if self.inventory.get(k, 0) < n]
+        if missing:
+            return False, f"not enough materials for a {width}x{height} room at ({x},{y}): need {', '.join(missing)}", 5
+        for k, n in need.items():
+            self.inventory[k] -= n
+        for i in range(x, x + width):
+            self.tiles.pop((i, y - 1), None)  # clear grass/trees inside (mock simplification)
+        self.rooms.append((x + 1, y - height + 2, x + width - 2, y - 1))
+        return True, f"built room: walls x {x}..{x + width - 1}, floor row y={y}; place furniture on row {y - 1}", 600
+
+    def s_check_house(self, x: int, y: int):
+        for (x1, y1, x2, y2) in self.rooms:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                inside = {t for (i, j), t in self.tiles.items() if x1 <= i <= x2 and y1 <= j <= y2}
+                missing = [n for n, t in (("chair", "Chairs"), ("table", "Tables"), ("work bench", "WorkBenches")) if t not in inside]
+                if missing:
+                    return False, "house not done: " + "; ".join(f"no {m} inside" for m in missing), 1
+                return True, "HOUSE OK: enclosed, walls, door, chair, table, work bench.", 1
+        return False, "house not done: NOT ENCLOSED: air escapes the room; close the gap with blocks", 1
 
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)

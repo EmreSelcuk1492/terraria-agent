@@ -17,6 +17,9 @@ namespace TerrariaAgentBridge
             "attack" => new Attack(Str(args, "target", "nearest"), Int(args, "max_kills", 1)),
             "use_item" => new UseItem(Str(args, "item")),
             "wait" => new Wait((float)Num(args, "seconds", 1)),
+            "build_room" => new BuildRoom(Int(args, "x"), Int(args, "y"), Int(args, "width", 10), Int(args, "height", 6),
+                Str(args, "block", "Wood"), Str(args, "wall", "WoodWall"), Str(args, "door", "WoodenDoor")),
+            "check_house" => new CheckHouse(Int(args, "x"), Int(args, "y")),
             _ => null,
         };
 
