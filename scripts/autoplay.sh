@@ -10,7 +10,8 @@ world="${3:-}"
 bridge="http://127.0.0.1:7979"
 save_dir="$HOME/Library/Application Support/Terraria/tModLoader"
 
-locked() { ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; }
+# Capture first: with pipefail, `ioreg | grep -q` reports failure when grep exits early and ioreg gets SIGPIPE.
+locked() { local s; s="$(ioreg -n Root -d1)"; [[ "$s" == *'"CGSSessionScreenIsLocked"=Yes'* ]]; }
 in_world() { curl -s -m 2 "$bridge/health" | grep -q '"in_world":true'; }
 stamp() { date "+%H:%M:%S"; }
 
