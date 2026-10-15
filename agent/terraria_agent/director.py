@@ -414,6 +414,10 @@ class Director:
                 self.note(f"Done: {step.title}.", chat=True)
                 return True
             self.note(f"{step.title}: {msg[:200]}")
+            if msg.startswith(("LOW HEALTH", "you are dead")):
+                # Danger, not a planning problem: the safety rules (fight, retreat, dig in) handle it on the next loop.
+                # Asking the advisor here left the character standing among zombies for a minute per failure.
+                return False
             if self._advise(step, msg):
                 ok, msg = self._run_calls(alt)
                 if ok:
@@ -595,7 +599,7 @@ def make_advisor(kind: str, model: str):
     from .backends import OllamaBackend
     # The world keeps running while the advisor thinks (2+ minutes per fix in the first real run, standing among
     # zombies), so cap it: no answer in time just means the step is parked and retried later.
-    return OllamaBackend(model=model, keep_results=2, think="auto", timeout=45)
+    return OllamaBackend(model=model, keep_results=2, think="auto", timeout=30)
 
 
 def main(argv: list[str] | None = None) -> int:
