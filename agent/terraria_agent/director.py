@@ -281,6 +281,7 @@ class Director:
         self.last_potion = 0.0
         self.dead = False
         self.track = "survival (enemies and damage on)"
+        self.publish = False  # main() turns it on: a real run publishes its summary to the lab page
         self.roof: list[tuple[int, int]] = []  # bunker roof tiles from the last dig_in, mined on the way out
 
     # -- io
@@ -609,9 +610,10 @@ class Director:
         with self.journal_path.open("a") as f:
             f.write("\n".join(lines) + "\n")
         self.note(f"Session over: {len(done)}/{len(self.plan)} plan steps done. Journal: {self.journal_path.name}", chat=True)
-        from .lab import publish_director_quietly
-        host = "mac" if str(self.bridge._http.base_url).rstrip("/").endswith(":7979") else "sim"
-        publish_director_quietly(self.journal_path, f"Director {time.strftime('%m-%d %H:%M')}", host)
+        if self.publish:  # only real runs from the command line; tests drive the mock world through run() too
+            from .lab import publish_director_quietly
+            host = "mac" if str(self.bridge._http.base_url).rstrip("/").endswith(":7979") else "sim"
+            publish_director_quietly(self.journal_path, f"Director {time.strftime('%m-%d %H:%M')}", host)
         try:
             self.bridge.status(f"AI Director: done, {len(done)}/{len(self.plan)} steps. Journal in agent/runs/")
             self.bridge.set_background(False)
@@ -647,6 +649,7 @@ def main(argv: list[str] | None = None) -> int:
         bridge.set_time(a.start_at)
     bridge.set_sandbox(a.peaceful, a.peaceful)  # always set: the mod keeps the last value until the game restarts
     d = Director(bridge, make_advisor(a.advisor, a.model), memo_dir=a.runs_dir, say_in_game=not a.quiet_chat)
+    d.publish = True
     if a.peaceful:
         d.track = "build (peaceful: no hostile spawns, no damage)"
     d.run(hours=a.hours)
