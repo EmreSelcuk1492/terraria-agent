@@ -65,6 +65,10 @@ class BridgeClient:
         except BridgeError:
             return {"ok": False}
 
+    def set_time(self, at: str) -> dict[str, Any]:
+        """Testing aid: jump to "dawn", "noon", "dusk" or "midnight"."""
+        return self._post("/time", {"at": at})
+
     def save(self) -> dict[str, Any]:
         return self._post("/save", {})
 

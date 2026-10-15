@@ -166,6 +166,27 @@ namespace TerrariaAgentBridge
                     });
                 }
 
+                case "POST /time":
+                {
+                    // Testing aid for headless runs (sim/): start a run at a known time of day so one bad first night
+                    // doesn't decide it. {"at": "dawn" | "noon" | "dusk" | "midnight"}
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    string at = doc.RootElement.TryGetProperty("at", out var a) ? a.GetString() ?? "" : "";
+                    if (!InWorld) return Error("not in a world");
+                    (bool day, double t) = at switch
+                    {
+                        "dawn" => (true, 0.0), "noon" => (true, 27000.0), "dusk" => (false, 0.0), "midnight" => (false, 16200.0),
+                        _ => (true, -1.0),
+                    };
+                    if (t < 0) return Error("at must be dawn, noon, dusk or midnight");
+                    return await OnMainThread(() =>
+                    {
+                        Main.dayTime = day;
+                        Main.time = t;
+                        return new Dictionary<string, object> { ["ok"] = true, ["at"] = at };
+                    });
+                }
+
                 case "POST /save":
                     if (!InWorld) return Error("not in a world");
                     return await OnMainThread(() =>

@@ -23,7 +23,7 @@ namespace TerrariaAgentBridge.Skills
         private readonly bool gather;
         private Skill child;
         private bool walked;
-        private int steps;
+        private int steps, placeTries;
 
         public EnsureStation(int tileType, bool gather, int depth = 0) { this.tileType = tileType; this.gather = gather; this.depth = depth; }
 
@@ -51,6 +51,14 @@ namespace TerrariaAgentBridge.Skills
             if (slot >= 0)
             {
                 if (PlaceNear(p, slot)) return; // adjTile is checked next tick
+                if (placeTries < 3)
+                {
+                    // Uneven ground or furniture all around: walk a few tiles (+6, then -12, then +18 from there) and retry.
+                    int off = (placeTries % 2 == 0 ? 1 : -1) * 6 * (placeTries + 1);
+                    placeTries++;
+                    child = new MoveTo(Game.TileX(p) + off, Game.TileY(p), 2);
+                    return;
+                }
                 Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it; move to flat ground");
                 return;
             }

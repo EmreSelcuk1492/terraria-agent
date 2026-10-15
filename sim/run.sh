@@ -10,7 +10,9 @@ saves="$HOME/Library/Application Support/Terraria/tModLoader"
 inst="$home/instances/$name"
 if [ "$fresh" = "--fresh" ] || [ ! -d "$inst/save" ]; then
   rm -rf "$inst"; mkdir -p "$inst/save/Mods" "$inst/save/Players" "$inst/save/Worlds" "$inst/logs"
-  cp "$saves/Mods/TerrariaAgentBridge.tmod" "$inst/save/Mods/"
+  # A bridge built for the sim (e.g. from another branch) goes in $home/mods/ so your Mac game keeps its own.
+  mod="$home/mods/TerrariaAgentBridge.tmod"; [ -f "$mod" ] || mod="$saves/Mods/TerrariaAgentBridge.tmod"
+  cp "$mod" "$inst/save/Mods/"
   printf '["TerrariaAgentBridge"]' > "$inst/save/Mods/enabled.json"   # only the bridge; stray .tmods pop error dialogs
   cp "$(dirname "$0")/config.json" "$inst/save/config.json"   # language + last-run versions: skips first-run screens
   p="${player// /_}"; w="${world// /_}"

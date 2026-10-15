@@ -272,10 +272,11 @@ namespace TerrariaAgentBridge.Skills
         private void Sidestep(Player p, string why)
         {
             lastBlock = why;
-            if (++sidesteps > 4) { Fail($"digging down stopped after {sidesteps - 1} sidesteps: {lastBlock}"); return; }
-            // Offsets are from where you stand now: +3, -6, +9, -12 visits +3, -3, +6, -6 around the first blocked column
-            // (the old +3, -3, +6, -6 from the current spot walked back onto the blocked column every second time).
-            int off = (sidesteps % 2 == 1 ? 1 : -1) * 3 * sidesteps;
+            if (++sidesteps > 6) { Fail($"digging down stopped after {sidesteps - 1} sidesteps: {lastBlock}"); return; }
+            // Offsets are from where you stand now: +4, -8, +12, -16, ... visits +4, -4, +8, -8, +12, -12 around the first
+            // blocked column. Wide enough to get clear of a 12-tile house (furniture and platforms aren't diggable); the
+            // first real run gave up after +-6 while still standing inside the house at spawn.
+            int off = (sidesteps % 2 == 1 ? 1 : -1) * 4 * sidesteps;
             // TunnelTo, not MoveTo: inside a shaft the walls are solid, so walking sideways can't move at all.
             walk = new TunnelTo(Game.TileX(p) + off, Game.TileY(p), 1);
         }

@@ -79,6 +79,9 @@ class Ctx:
         spawn_y = (self.world.get("spawn") or [0, 10**9])[1]
         return self.player.get("y", 0) > min(self.world.get("surface_y", 10**9), spawn_y + 15)
 
+    def hostiles(self, within: int = 4) -> list[dict[str, Any]]:
+        return [n for n in self.state.get("npcs", []) if n.get("hostile") and n.get("distance", 99) <= within]
+
     @property
     def hp_frac(self) -> float:
         return self.player.get("hp", 100) / max(1, self.player.get("max_hp", 100))
@@ -276,6 +279,7 @@ class Director:
         self.last_save = time.time()
         self.calls = 0
         self.last_potion = 0.0
+        self.dead = False
 
     # -- io
 
@@ -338,11 +342,13 @@ class Director:
         """Handle danger. True if it acted (observe again before planning)."""
         p = c.player
         if p.get("dead"):
-            self.note("Died. Waiting to respawn.", chat=False)
-            self.memo.bump("deaths")
-            time.sleep(4)
-            self.call("wait", {"seconds": 10})
+            if not self.dead:  # one note and one count per death, not one per poll while the respawn timer runs
+                self.dead = True
+                self.note("Died. Waiting to respawn.", chat=False)
+                self.memo.bump("deaths")
+            time.sleep(3)
             return True
+        self.dead = False
         if c.hp_frac < 0.35:
             potion = next((i for i in ("LesserHealingPotion", "HealingPotion", "Mushroom") if c.has(i)), None)
             if potion and time.time() - self.last_potion > 60:  # potion sickness: one per minute
@@ -350,13 +356,28 @@ class Director:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): using {potion}.", chat=True)
                 self.call("use_item", {"item": potion})
                 return True
-            if self.memo.home and not c.underground:
+            # Standing still is how the first real run died 8 times at spawn: `wait` refuses with hostiles near,
+            # so the character took hits without swinging. Fight what's adjacent, otherwise get away from it.
+            near = c.hostiles(4)
+            if near:
+                self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): fighting off {near[0]['name']}.", chat=False)
+                self.call("attack", {"target": "nearest", "max_kills": 2})
+            elif self.memo.home and not c.underground:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): retreating home to recover.", chat=True)
                 for name, args in _go_home(self.memo):
                     self.call(name, args)
-            self.call("wait", {"seconds": 15})
+            elif not c.underground:
+                self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}), no home: digging in to recover.", chat=True)
+                self._shelter(c)
+            else:
+                self.call("wait", {"seconds": 10})
             return True
         return False
+
+    def _shelter(self, c: Ctx) -> None:
+        """No house to hide in: tunnel a few tiles down and to the side, out of reach of surface zombies."""
+        p = c.player
+        self.call("tunnel_to", {"x": p.get("x", 0) + 6, "y": p.get("y", 0) + 12, "tolerance": 2})
 
     def runnable(self, c: Ctx) -> list[Step]:
         now = time.time()
@@ -501,6 +522,10 @@ class Director:
             self.finish()
 
     def _night(self, c: Ctx) -> None:
+        if not self.memo.home and not c.underground:
+            self.bridge.status(f"AI Director: night ({c.world.get('time')}), no home yet", "sheltering underground until dawn")
+            self.note(f"Night ({c.world.get('time')}) and no home: sheltering underground until morning.", chat=True)
+            self._shelter(c)
         if self.memo.home and not c.underground:
             h = self.memo.home
             self.bridge.status(f"AI Director: night ({c.world.get('time')}), staying home", "back to work at dawn")
@@ -568,7 +593,9 @@ def make_advisor(kind: str, model: str):
     if kind == "none":
         return None
     from .backends import OllamaBackend
-    return OllamaBackend(model=model, keep_results=2, think="auto")
+    # The world keeps running while the advisor thinks (2+ minutes per fix in the first real run, standing among
+    # zombies), so cap it: no answer in time just means the step is parked and retried later.
+    return OllamaBackend(model=model, keep_results=2, think="auto", timeout=45)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -578,8 +605,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--advisor", choices=["ollama", "none"], default="ollama")
     ap.add_argument("--model", default="gpt-oss:20b")
     ap.add_argument("--quiet-chat", action="store_true", help="don't narrate in the in-game chat")
+    ap.add_argument("--start-at", choices=["dawn", "noon", "dusk", "midnight"],
+                    help="testing: set the time of day before starting (sim runs start at dawn for comparable results)")
     a = ap.parse_args(argv)
     bridge = BridgeClient(a.bridge, skill_timeout=1800)  # longer than any skill's in-game timeout (build_house: 1200s)
+    if a.start_at:
+        bridge.set_time(a.start_at)
     Director(bridge, make_advisor(a.advisor, a.model), say_in_game=not a.quiet_chat).run(hours=a.hours)
     return 0
 
