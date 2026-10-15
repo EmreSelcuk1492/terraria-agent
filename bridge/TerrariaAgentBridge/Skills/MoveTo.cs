@@ -33,7 +33,7 @@ namespace TerrariaAgentBridge.Skills
 
             if (Math.Abs(dx) <= tolerance && Math.Abs(dy) <= tolerance + 2)
             {
-                Succeed($"arrived at ({px},{py})");
+                Succeed($"arrived at ({px},{py}) {How}");
                 return;
             }
 
@@ -48,7 +48,7 @@ namespace TerrariaAgentBridge.Skills
             if (dist < bestDist - 0.5f) { bestDist = dist; ticksSinceProgress = 0; }
             else if (++ticksSinceProgress > 120)
             {
-                Fail($"stuck at ({px},{py}) trying to reach ({tx},{ty}). {DescribeObstacle(p, Math.Sign(dx))}");
+                Fail($"stuck at ({px},{py}) trying to reach ({tx},{ty}) {How}. {DescribeObstacle(p, Math.Sign(dx))}");
                 return;
             }
 
@@ -60,6 +60,11 @@ namespace TerrariaAgentBridge.Skills
         private List<Pathfinder.Node> path;
         private int pathState, pathIdx, pathStall, replans;
         public int PathLength => path?.Count ?? 0;
+        private int plannedNodes;
+        private bool noPath;
+        /// <summary>How the move went, for results and A/B runs: "via A* (23 nodes, 0 replans)" or "greedy (no A* path)".</summary>
+        private string How => !Pathfinder.Enabled ? "(greedy: A* off)" : noPath ? "(greedy: no A* path)"
+            : plannedNodes > 0 ? $"(A* {plannedNodes} nodes, {replans} replans{(pathState == 2 && replans > 3 ? ", then greedy" : "")})" : "(greedy)";
 
         private bool FollowPath(Player p)
         {
@@ -71,6 +76,7 @@ namespace TerrariaAgentBridge.Skills
                 pathIdx = 0;
                 pathStall = 0;
                 pathState = path == null || path.Count < 2 ? 2 : 1;
+                if (path == null) noPath = true; else plannedNodes = Math.Max(plannedNodes, path.Count);
                 if (pathState == 2) { path = null; return false; }
             }
             int c = Explore.LeftCol(p), f = Explore.Feet(p);

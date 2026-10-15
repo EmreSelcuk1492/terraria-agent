@@ -57,7 +57,7 @@ SCENARIOS: list[Scenario] = [
     Scenario("zombie_half_hp", "half health and a zombie walking up: dig in early or win the fight",
              {"time": "noon", "hp": 50, "spawn": [_zombie(4)]}, 40),
     Scenario("two_zombies_low_night", "run 4/5 deaths: low health at night with zombies on both sides",
-             {"time": "midnight", "hp": 35, "spawn": [_zombie(-3), _zombie(3)]}, 45),
+             {"time": "midnight", "hp": 35, "spawn": [_zombie(-3), _zombie(3)]}, 45, tags=("survival", "hard")),
     Scenario("demon_eye_overhead", "a flier the shortsword can't reach must not drain health",
              {"time": "midnight", "hp": 70, "spawn": [_zombie(2, -8, "DemonEye")]}, 40),
     Scenario("slime_pack", "three slimes at full health: fight them all off",
@@ -84,11 +84,11 @@ NAV = [
              call=_goto(12, -2), tags=("nav",)),
     Scenario("nav_pit", "a 3-wide, 7-deep pit to jump", {"time": "noon", "build": [_rect(5, 7, 0, 6, "air")]}, 25,
              call=_goto(13, -2), tags=("nav",)),
-    Scenario("nav_detour", "a 6-high plateau reached only by walking away: left, up the stairs, back along a bridge",
-             {"time": "noon", "build": [*[_rect(-12 + i, -12 + i, -1 - i, -1) for i in range(6)],  # stairs up to row -6
-                                         _rect(-6, 3, -6, -6),                                     # bridge over the start
-                                         _rect(4, 12, -6, -1)]},                                   # the plateau
-             40, call=_goto(9, -8), tags=("nav",)),
+    Scenario("nav_tunnel", "the target is in a tunnel under the ground to the right; the only way in is a shaft to the left",
+             {"time": "noon", "build": [_rect(-8, 14, 6, 6),            # tunnel floor
+                                         _rect(-6, -5, 0, 5, "air"),     # entrance shaft, 6 tiles left of the start
+                                         _rect(-6, 12, 3, 5, "air")]},   # the tunnel (ceiling = arena ground)
+             40, call=_goto(10, 4), tags=("nav",)),
 ]
 SCENARIOS += NAV
 
@@ -130,7 +130,7 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
         bridge.set_background(True)
         if config:
             bridge._post("/config", config)
-        setup = {"arena": True, "clear": True, "natural_spawns": False, **sc.setup}
+        setup = {"arena": True, "fresh_player": True, "clear": True, "natural_spawns": False, **sc.setup}
         r = bridge._post("/scenario", setup)
         if not r.get("ok"):
             raise BridgeError(r.get("error", "scenario setup failed"))

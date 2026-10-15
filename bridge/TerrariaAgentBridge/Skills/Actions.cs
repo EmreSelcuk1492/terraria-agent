@@ -167,6 +167,14 @@ namespace TerrariaAgentBridge.Skills
             if (p.dead) { Fail("you died"); return; }
             if (!desperate && p.statLife < p.statLifeMax2 * 0.3f) { Fail($"retreating: health {p.statLife}/{p.statLifeMax2}. Heal (use_item a potion) or run."); return; }
 
+            // A flier that pulled back out of reach: don't chase it (run 4 and the scenarios bled out doing that); pick
+            // another target, or end the fight and wait for its next swoop.
+            if (npcIndex >= 0 && Main.npc[npcIndex].active && Main.npc[npcIndex].life > 0 && SkillRunner.OutOfReachFlier(p, Main.npc[npcIndex]))
+            {
+                npcIndex = FindTarget(p, target);
+                if (npcIndex < 0) { if (kills > 0) Succeed($"killed {kills}{fellBack}; the rest are out of reach"); else Fail("only fliers out of reach; wait for them to swoop"); return; }
+            }
+
             if (npcIndex < 0 || !Main.npc[npcIndex].active || Main.npc[npcIndex].life <= 0)
             {
                 if (npcIndex >= 0) kills++;
