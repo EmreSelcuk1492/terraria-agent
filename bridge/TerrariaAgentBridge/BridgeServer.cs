@@ -239,6 +239,8 @@ namespace TerrariaAgentBridge
                         Background = bg.GetBoolean();
                     if (doc.RootElement.TryGetProperty("guard", out var guard))
                         SkillRunner.Guard = guard.GetBoolean();
+                    if (doc.RootElement.TryGetProperty("astar", out var astar))
+                        Skills.Pathfinder.Enabled = astar.GetBoolean();
                     if (doc.RootElement.TryGetProperty("god", out var god))
                         Sandbox.God = god.GetBoolean();
                     int cleared = 0;
@@ -248,7 +250,7 @@ namespace TerrariaAgentBridge
                         if (Sandbox.Peaceful && InWorld) cleared = (int)await OnMainThread(() => Sandbox.ClearHostiles());
                     }
                     return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background,
-                        ["guard"] = SkillRunner.Guard, ["peaceful"] = Sandbox.Peaceful, ["god"] = Sandbox.God, ["cleared"] = cleared };
+                        ["guard"] = SkillRunner.Guard, ["peaceful"] = Sandbox.Peaceful, ["god"] = Sandbox.God, ["astar"] = Skills.Pathfinder.Enabled, ["cleared"] = cleared };
                 }
 
                 case "POST /cancel":

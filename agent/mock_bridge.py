@@ -427,6 +427,11 @@ class World:
         """Mock of the mod's POST /scenario: health, time, enemies at offsets (no physics)."""
         if b.get("clear", True):
             self.npcs = []
+        if b.get("fresh_player"):
+            self.inventory = {"CopperShortsword": 1, "CopperPickaxe": 1, "CopperAxe": 1}
+            self.player["max_hp"] = self.player["hp"] = 100
+        for k, v in (b.get("give") or {}).items():
+            self.inventory[k] = self.inventory.get(k, 0) + int(v)
         if "hp" in b:
             self.player["hp"] = max(1, min(self.player["max_hp"], int(b["hp"])))
         if "time" in b:

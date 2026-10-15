@@ -38,6 +38,16 @@ namespace TerrariaAgentBridge
                 p.fallStart = (int)(p.position.Y / 16f);
                 did["arena"] = new[] { ax, ag };
             }
+            else if (r.TryGetProperty("surface_at", out var sa))
+            {
+                // Natural terrain `dx` tiles east of spawn (away from whatever earlier runs built or dug at spawn).
+                int tx = Math.Clamp(Main.spawnTileX + sa.GetInt32(), 60, Main.maxTilesX - 60), ty = 50;
+                while (ty < Main.worldSurface + 50 && !(Game.Solid(tx, ty) && Game.Solid(tx + 1, ty) || Game.Solid(tx, ty) && !Game.Solid(tx, ty - 1) && !Game.Solid(tx + 1, ty - 1))) ty++;
+                p.Teleport(new Vector2(tx * 16 + 8 - p.width / 2f, ty * 16 - p.height), TeleportationStyleID.DebugTeleport);
+                p.velocity = Vector2.Zero;
+                p.fallStart = (int)(p.position.Y / 16f);
+                did["at"] = new[] { tx, ty };
+            }
             else if (r.TryGetProperty("at", out var at))
             {
                 int tx, ty;
@@ -48,10 +58,52 @@ namespace TerrariaAgentBridge
                 did["at"] = new[] { tx, ty };
             }
 
+            // Terrain on top of the arena, relative to its centre column and ground row (negative dy is up):
+            // {"build": [{"tile": "Dirt" | "air", "dx0": 4, "dx1": 6, "dy0": -4, "dy1": -1}]}
+            if (r.TryGetProperty("build", out var build) && build.ValueKind == JsonValueKind.Array && did.TryGetValue("arena", out var ao))
+            {
+                var a = (int[])ao;
+                foreach (var b in build.EnumerateArray())
+                {
+                    string tile = b.TryGetProperty("tile", out var tt) ? tt.GetString() : "Dirt";
+                    int type = tile == "air" ? -1 : Game.ResolveTile(tile);
+                    if (tile != "air" && type < 0) return Error($"unknown tile '{tile}'");
+                    for (int i = a[0] + b.GetProperty("dx0").GetInt32(); i <= a[0] + b.GetProperty("dx1").GetInt32(); i++)
+                        for (int j = a[1] + b.GetProperty("dy0").GetInt32(); j <= a[1] + b.GetProperty("dy1").GetInt32(); j++)
+                        {
+                            if (Framing.GetTileSafely(i, j).HasTile) WorldGen.KillTile(i, j, fail: false, effectOnly: false, noItem: true);
+                            if (type >= 0) WorldGen.PlaceTile(i, j, type, mute: true, forced: true);
+                        }
+                }
+                // Teleport again: the build may have changed what is under the player.
+                p.Teleport(new Vector2(a[0] * 16 + 8 - p.width / 2f, a[1] * 16 - p.height), TeleportationStyleID.DebugTeleport);
+                p.velocity = Vector2.Zero;
+            }
+
             if (r.TryGetProperty("time", out var time))
             {
                 if (!SetTime(time.GetString())) return Error("time must be dawn, noon, dusk or midnight");
                 did["time"] = time.GetString();
+            }
+
+            // A new character's kit and stats, so benchmark results don't depend on what earlier runs left in the
+            // save (the Mac run left 423 stone, iron ore and a life crystal on the player the sim copies).
+            if (r.TryGetProperty("fresh_player", out var fresh) && fresh.ValueKind == JsonValueKind.True)
+            {
+                for (int i = 0; i < p.inventory.Length; i++) p.inventory[i].TurnToAir();
+                for (int i = 0; i < p.armor.Length; i++) p.armor[i].TurnToAir();
+                for (int i = 0; i < p.miscEquips.Length; i++) p.miscEquips[i].TurnToAir();
+                p.ConsumedLifeCrystals = 0;
+                p.ConsumedLifeFruit = 0;
+                p.ConsumedManaCrystals = 0;
+                p.statLifeMax = 100;
+                p.statManaMax = 20;
+                int slot = 0;
+                foreach (int type in new[] { ItemID.CopperShortsword, ItemID.CopperPickaxe, ItemID.CopperAxe })
+                    p.inventory[slot++].SetDefaults(type);
+                p.selectedItem = 0;
+                p.statLife = 100;
+                did["fresh_player"] = true;
             }
 
             if (r.TryGetProperty("take", out var take) && take.ValueKind == JsonValueKind.Array)

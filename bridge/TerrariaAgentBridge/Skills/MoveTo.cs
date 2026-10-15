@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Terraria;
 
 namespace TerrariaAgentBridge.Skills
@@ -41,6 +42,8 @@ namespace TerrariaAgentBridge.Skills
             if (lastFrame != 0 && Main.GameUpdateCount - lastFrame > 2) { bestDist = float.MaxValue; ticksSinceProgress = 0; }
             lastFrame = Main.GameUpdateCount;
 
+            if (FollowPath(p)) return;
+
             float dist = Math.Abs(dx) + Math.Abs(dy) * 0.5f;
             if (dist < bestDist - 0.5f) { bestDist = dist; ticksSinceProgress = 0; }
             else if (++ticksSinceProgress > 120)
@@ -50,6 +53,38 @@ namespace TerrariaAgentBridge.Skills
             }
 
             Drive(p, dx, dy, Math.Abs(dx) > tolerance);
+        }
+
+        // A* path (Pathfinder): planned on the first tick, re-planned when progress stalls, abandoned for the greedy
+        // walk below after 3 re-plans or when no path exists. pathState: 0 not planned, 1 following, 2 greedy.
+        private List<Pathfinder.Node> path;
+        private int pathState, pathIdx, pathStall, replans;
+        public int PathLength => path?.Count ?? 0;
+
+        private bool FollowPath(Player p)
+        {
+            if (pathState == 2 || !Pathfinder.Enabled) return false;
+            if (pathState == 0 || pathStall > 90)
+            {
+                if (pathState == 1 && ++replans > 3) { pathState = 2; path = null; bestDist = float.MaxValue; return false; }
+                path = Pathfinder.Find(p, tx, ty, tolerance);
+                pathIdx = 0;
+                pathStall = 0;
+                pathState = path == null || path.Count < 2 ? 2 : 1;
+                if (pathState == 2) { path = null; return false; }
+            }
+            int c = Explore.LeftCol(p), f = Explore.Feet(p);
+            int at = -1;
+            for (int k = path.Count - 1; k >= pathIdx; k--) // furthest node we are on (momentum skips some)
+                if (Math.Abs(path[k].Col - c) <= 1 && path[k].Feet == f) { at = k; break; }
+            if (at > pathIdx) { pathIdx = at; pathStall = 0; } else pathStall++;
+            if (pathIdx >= path.Count - 1) { pathState = 2; path = null; bestDist = float.MaxValue; return false; } // last leg: greedy
+
+            var next = path[Math.Min(pathIdx + 1, path.Count - 1)];
+            bool onGround = Math.Abs(p.velocity.Y) < 0.01f;
+            if (next.Jump && onGround && jumpCooldown == 0 && jumpHold == 0) jumpHold = 18; // a gap: jump at the edge
+            Drive(p, next.Col - c + (next.Col > c ? 1 : next.Col < c ? -1 : 0), next.Feet - f, true);
+            return true;
         }
 
         /// <summary>One tick of movement toward a tile offset. Shared with Attack.</summary>

@@ -41,6 +41,10 @@ class Scenario:
     min_hp: int | None = None        # health at the end
     min_cleared: int | None = None   # spawned enemies gone by the end (killed, or despawned)
     work: tuple[str, dict[str, Any]] | None = WORK
+    # Single-skill scenario (navigation): one call instead of the Director loop; passes when the call succeeds.
+    # "dx"/"dy" in its args are offsets from the arena's centre column / ground row, turned into "x"/"y".
+    call: tuple[str, dict[str, Any]] | None = None
+    tags: tuple[str, ...] = ("survival",)
 
 
 def _zombie(dx: int, dy: int = 0, npc: str = "Zombie") -> dict[str, Any]:
@@ -62,6 +66,31 @@ SCENARIOS: list[Scenario] = [
     Scenario("low_hp_alone_recovers", "low health with nobody around: shelter and regenerate",
              {"time": "noon", "hp": 20}, 90, min_hp=45),
 ]
+
+
+def _rect(dx0: int, dx1: int, dy0: int, dy1: int, tile: str = "Dirt") -> dict[str, Any]:
+    return {"tile": tile, "dx0": dx0, "dx1": dx1, "dy0": dy0, "dy1": dy1}
+
+
+def _goto(dx: int, dy: int) -> tuple[str, dict[str, Any]]:
+    return ("move_to", {"dx": dx, "dy": dy, "tolerance": 1})
+
+
+# Navigation: terrain built in the arena (dy < 0 is above the ground row), one move_to, pass = arrived. Run them with
+# `--set astar=false` too: the same suite on the old greedy walker is the before/after for the pathfinder.
+NAV = [
+    Scenario("nav_flat", "control: 15 tiles over flat ground", {"time": "noon"}, 25, call=_goto(15, -2), tags=("nav",)),
+    Scenario("nav_wall4", "a 4-high wall in the way", {"time": "noon", "build": [_rect(6, 6, -4, -1)]}, 25,
+             call=_goto(12, -2), tags=("nav",)),
+    Scenario("nav_pit", "a 3-wide, 7-deep pit to jump", {"time": "noon", "build": [_rect(5, 7, 0, 6, "air")]}, 25,
+             call=_goto(13, -2), tags=("nav",)),
+    Scenario("nav_detour", "a 6-high plateau reached only by walking away: left, up the stairs, back along a bridge",
+             {"time": "noon", "build": [*[_rect(-12 + i, -12 + i, -1 - i, -1) for i in range(6)],  # stairs up to row -6
+                                         _rect(-6, 3, -6, -6),                                     # bridge over the start
+                                         _rect(4, 12, -6, -1)]},                                   # the plateau
+             40, call=_goto(9, -8), tags=("nav",)),
+]
+SCENARIOS += NAV
 
 
 @dataclass
@@ -89,7 +118,7 @@ def _wait_alive(bridge: BridgeClient, timeout: float = 30) -> None:
     raise BridgeError("player still dead after 30s")
 
 
-def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path) -> Result:
+def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[str, Any] | None = None) -> Result:
     bridge = BridgeClient(url, skill_timeout=sc.seconds + 120)
     canceller = BridgeClient(url)
     t0 = time.time()
@@ -99,11 +128,28 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path) -> Result:
         bridge.set_guard(True)
         bridge.set_freeze(False)
         bridge.set_background(True)
+        if config:
+            bridge._post("/config", config)
         setup = {"arena": True, "clear": True, "natural_spawns": False, **sc.setup}
         r = bridge._post("/scenario", setup)
         if not r.get("ok"):
             raise BridgeError(r.get("error", "scenario setup failed"))
         spawned = {s["index"] for s in r.get("spawned", [])}
+
+        if sc.call:
+            ax, ag = r.get("arena") or (0, 0)
+            name, args = sc.call
+            args = {**args}
+            if "dx" in args:
+                args["x"] = ax + args.pop("dx")
+            if "dy" in args:
+                args["y"] = ag + args.pop("dy")
+            res = bridge.skill(name, args)
+            ok, msg = bool(res.get("ok")), res.get("message") or res.get("error") or ""
+            took = round(time.time() - t0, 1)
+            fails = [] if ok and took <= sc.seconds else [f"{name} failed: {msg[:160]}" if not ok else f"took {took}s > {sc.seconds}s"]
+            hp = int(res.get("player", {}).get("hp", 0))
+            return Result(sc.name, url, attempt, not fails, 0, hp, 0, 0, took, fails, [f"{took:5.1f}s {'ok ' if ok else 'ERR'} {name} {json.dumps(args)} -> {msg[:200]}"])
 
         with tempfile.TemporaryDirectory(dir=out_dir) as memo_dir:
             d = Director(bridge, advisor=None, memo_dir=Path(memo_dir), verbose=False, say_in_game=False)
@@ -170,7 +216,8 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path) -> Result:
         canceller.close()
 
 
-def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_dir: Path, verbose: bool = True) -> list[Result]:
+def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_dir: Path, verbose: bool = True,
+              config: dict[str, Any] | None = None) -> list[Result]:
     """Each bridge (one game instance) takes the next job from a shared queue, so N instances run N at once."""
     out_dir.mkdir(parents=True, exist_ok=True)
     jobs: queue.Queue[tuple[Scenario, int]] = queue.Queue()
@@ -186,7 +233,7 @@ def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_di
                 sc, attempt = jobs.get_nowait()
             except queue.Empty:
                 return
-            r = run_one(sc, url, attempt, out_dir)
+            r = run_one(sc, url, attempt, out_dir, config)
             with lock:
                 results.append(r)
                 if verbose:
@@ -199,21 +246,22 @@ def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_di
         t.start()
     for t in threads:
         t.join()
-    write_report(results, scenarios, out_dir)
+    write_report(results, scenarios, out_dir, config)
     return results
 
 
-def write_report(results: list[Result], scenarios: list[Scenario], out_dir: Path) -> None:
-    (out_dir / "results.json").write_text(json.dumps([r.__dict__ for r in results], indent=1))
-    lines = [f"# Scenario report {time.strftime('%Y-%m-%d %H:%M')}", "",
-             "| scenario | pass rate | deaths | end hp | cleared | why |", "|---|---|---|---|---|---|"]
+def write_report(results: list[Result], scenarios: list[Scenario], out_dir: Path, config: dict[str, Any] | None = None) -> None:
+    (out_dir / "results.json").write_text(json.dumps({"config": config or {}, "results": [r.__dict__ for r in results]}, indent=1))
+    lines = [f"# Scenario report {time.strftime('%Y-%m-%d %H:%M')}", "", f"Config: `{json.dumps(config or {})}`", "",
+             "| scenario | pass rate | deaths | end hp | cleared | mean s | why |", "|---|---|---|---|---|---|---|"]
     for sc in scenarios:
         rs = [r for r in results if r.scenario == sc.name]
         if not rs:
             continue
         ok = sum(r.passed for r in rs)
         lines.append(f"| {sc.name} | {ok}/{len(rs)} | {sum(r.deaths for r in rs)} | "
-                     f"{', '.join(str(r.hp_end) for r in rs)} | {', '.join(f'{r.cleared}/{r.spawned}' for r in rs)} | {sc.why} |")
+                     f"{', '.join(str(r.hp_end) for r in rs)} | {', '.join(f'{r.cleared}/{r.spawned}' for r in rs)} | "
+                     f"{sum(r.seconds for r in rs) / len(rs):.1f} | {sc.why} |")
     total = sum(r.passed for r in results)
     lines += ["", f"**{total}/{len(results)} passed.**", "", "## Failures", ""]
     for r in results:
@@ -228,17 +276,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bridge", action="append", help="one per game instance (repeat the flag); default 7979")
     ap.add_argument("--only", action="append", help="scenario name(s) to run")
     ap.add_argument("--repeat", type=int, default=1, help="attempts per scenario (pass rate, not one lucky run)")
+    ap.add_argument("--tag", action="append", help="only scenarios with this tag (survival, nav)")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="mod /config switch for the whole suite, e.g. astar=false (A/B runs)")
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args(argv)
     if a.list:
         for sc in SCENARIOS:
-            print(f"{sc.name:24} {sc.seconds:>4.0f}s  {sc.why}")
+            print(f"{sc.name:24} {','.join(sc.tags):9} {sc.seconds:>4.0f}s  {sc.why}")
         return 0
-    chosen = [s for s in SCENARIOS if not a.only or s.name in a.only]
+    chosen = [s for s in SCENARIOS if (not a.only or s.name in a.only) and (not a.tag or set(a.tag) & set(s.tags))]
+    config = {k: json.loads(v) if v in ("true", "false") or v.replace(".", "").isdigit() else v
+              for k, v in (kv.split("=", 1) for kv in a.set)}
     if not chosen:
         ap.error(f"no scenario named {a.only}; see --list")
     out = ROOT / "runs" / "scenarios" / time.strftime("%Y%m%d-%H%M%S")
-    results = run_suite(a.bridge or ["http://127.0.0.1:7979"], chosen, a.repeat, out)
+    results = run_suite(a.bridge or ["http://127.0.0.1:7979"], chosen, a.repeat, out, config=config)
     print(f"\n{sum(r.passed for r in results)}/{len(results)} passed. Report: {out / 'report.md'}")
     return 0 if all(r.passed for r in results) else 1
 
