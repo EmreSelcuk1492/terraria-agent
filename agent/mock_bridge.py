@@ -162,6 +162,11 @@ class World:
             return False, f"no reachable {target} within 60 tiles", 10
         return True, f"mined {mined}/{count}", ticks
 
+    def s_dig_down(self, target: str = "Stone", max_depth: int = 80):
+        if any(t == target for t in self.tiles.values()):
+            return True, f"dug down 0 tiles; {target} is nearby now", 10
+        return False, f"dug {max_depth} tiles down and found no {target}", 60 * max_depth
+
     def s_place(self, item: str, x: int, y: int):
         if self.inventory.get(item, 0) <= 0:
             return False, f"no {item} in inventory", 1
@@ -228,6 +233,78 @@ class World:
                     return False, "house not done: " + "; ".join(f"no {m} inside" for m in missing), 1
                 return True, "HOUSE OK: enclosed, walls, door, chair, table, work bench.", 1
         return False, "house not done: NOT ENCLOSED: air escapes the room; close the gap with blocks", 1
+
+    def _ensure_station(self, station: str | None) -> tuple[bool, str, int]:
+        if self.station_near(station):
+            return True, "", 0
+        placed = [x for (x, _), t in self.tiles.items() if t == station]
+        if placed:  # walk back to one already placed, like the real EnsureStation
+            return True, "", self._walk(min(placed, key=lambda x: abs(x - self.player["x"])) - 1)
+        item = next((k for k, v in PLACES.items() if v == station), None)
+        if item is None:
+            return False, f"no {station} nearby", 1
+        ok, msg, t = self.s_obtain(item, self.inventory.get(item, 0) + 1) if self.inventory.get(item, 0) == 0 else (True, "", 0)
+        if not ok:
+            return ok, msg, t
+        px, py = self.player["x"], self.player["y"]
+        self.tiles[(px + 2, py + 1)] = station
+        self.inventory[item] -= 1
+        return True, "", t + 10
+
+    def s_obtain(self, item: str, count: int = 1, depth: int = 0):
+        ticks = 0
+        for _ in range(60):
+            have = self.inventory.get(item, 0)
+            if have >= count:
+                return True, f"have {have} {item}", ticks
+            if depth > 5:
+                return False, f"recipe chain for {item} is too deep", ticks
+            if item not in RECIPES:
+                tile = {"Wood": "Trees", "StoneBlock": "Stone", "DirtBlock": "Dirt", "CopperOre": "CopperOre"}.get(item)
+                if tile is None:
+                    return False, f"{item} can't be crafted or mined; it comes from chests, enemies or shops", ticks
+                ok, msg, t = self.s_mine_nearest(tile, 1)
+                ticks += t
+                if not ok:
+                    return False, f"getting {count} {item}: {msg}", ticks
+                continue
+            ing, station, out = RECIPES[item]
+            batches = -(-(count - have) // out)
+            for k, v in ing.items():
+                if self.inventory.get(k, 0) < v * batches:
+                    ok, msg, t = self.s_obtain(k, v * batches, depth + 1)
+                    ticks += t
+                    if not ok:
+                        return False, msg, ticks
+            ok, msg, t = self._ensure_station(station)
+            ticks += t
+            if not ok:
+                return False, msg, ticks
+            if t:
+                continue  # making the station may have used ingredients up; re-check
+            ok, msg, t = self.s_craft(item, batches)
+            ticks += t
+            if not ok:
+                return False, f"could not craft {item}: {msg}", ticks
+        return False, f"gave up on {item}", ticks
+
+    def s_build_house(self, x: int | None = None, y: int | None = None):
+        x = self.player["x"] - 5 if x is None else x
+        y = GROUND_Y if y is None else y
+        ticks = 0
+        for item, n in (("WoodWall", 32), ("WoodenDoor", 1), ("WoodenChair", 1), ("WoodenTable", 1), ("WorkBench", 1), ("Wood", 13)):
+            ok, msg, t = self.s_obtain(item, n)
+            ticks += t
+            if not ok:
+                return False, f"{msg} (house site ({x},{y}); call build_house again to resume)", ticks
+        ok, msg, t = self.s_build_room(x, y)
+        ticks += t
+        if not ok:
+            return False, msg, ticks
+        for item, dx in (("WorkBench", 1), ("WoodenTable", 4), ("WoodenChair", 7)):
+            ticks += self.s_place(item, x + dx, y - 1)[2]
+        ok, msg, t = self.s_check_house(x + 1, y - 4)
+        return ok, f"{msg} House at floor row y={y}, walls x {x}..{x + 9}.", ticks + t
 
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)

@@ -125,6 +125,12 @@ namespace TerrariaAgentBridge.Skills
         private (int x, int y) currentTarget;
         private string lastFailure;
 
+        public MineNearest(int tileType, int count)
+        {
+            this.tileType = tileType;
+            this.count = Math.Clamp(count, 1, 50);
+        }
+
         public MineNearest(string target, int count)
         {
             this.count = Math.Clamp(count, 1, 50);
@@ -185,6 +191,63 @@ namespace TerrariaAgentBridge.Skills
                 if (d < bestD) { bestD = d; best = (x, y); }
             }
             return best;
+        }
+    }
+
+    /// <summary>
+    /// Dig straight down under your feet until `tileType` shows up nearby (at least 3 tiles within reach of a
+    /// mine_nearest), or `maxDepth` tiles down. Used when there is none of it in view, e.g. Stone under a dirt surface.
+    /// </summary>
+    public class DigDown : Skill
+    {
+        public override string Name => "dig_down";
+        public override int TimeoutTicks => 60 * 240;
+        public override bool InterruptOnDamage => true;
+
+        private readonly int tileType, maxDepth;
+        private int startY = -1;
+        private Mine current;
+
+        public DigDown(int tileType, int maxDepth = 80)
+        {
+            this.tileType = tileType;
+            this.maxDepth = Math.Clamp(maxDepth, 1, 300);
+        }
+
+        public override void Tick(Player p)
+        {
+            if (current != null)
+            {
+                if (Step(current, p)) return;
+                if (!current.Ok) { Fail($"digging down stopped: {current.Message}"); return; }
+                current = null;
+            }
+            if (p.velocity.Y != 0) return; // still falling into the hole
+
+            int by = (int)(p.Bottom.Y / 16f); // the row under your feet
+            if (startY < 0) startY = by;
+            int depth = by - startY;
+            if (Near(p, tileType)) { Succeed($"dug down {depth} tiles; {Game.TileName(tileType)} is nearby now"); return; }
+            if (depth >= maxDepth) { Fail($"dug {depth} tiles down and found no {Game.TileName(tileType)}"); return; }
+
+            int left = (int)(p.position.X / 16f), right = (int)((p.position.X + p.width - 1) / 16f);
+            for (int x = left; x <= right; x++)
+                if (Game.InWorld(x, by) && Framing.GetTileSafely(x, by).HasTile && Main.tileSolid[Framing.GetTileSafely(x, by).TileType])
+                {
+                    current = new Mine(x, by);
+                    return;
+                }
+        }
+
+        /// <summary>At least 3 `tileType` tiles within pickaxe reach of where you stand (stone a few tiles under the dirt doesn't count).</summary>
+        public static bool Near(Player p, int tileType)
+        {
+            int px = Game.TileX(p), py = Game.TileY(p), n = 0;
+            for (int x = px - 4; x <= px + 4; x++)
+            for (int y = py - 2; y <= py + 4; y++)
+                if (Game.InWorld(x, y) && Framing.GetTileSafely(x, y).HasTile && Framing.GetTileSafely(x, y).TileType == tileType && ++n >= 3)
+                    return true;
+            return false;
         }
     }
 }

@@ -25,6 +25,8 @@ class RunStats:
     output_tokens: int = 0
     cache_read: int = 0
     cache_write: int = 0
+    model_seconds: float = 0.0
+    game_seconds: float = 0.0
     started: float = field(default_factory=time.time)
 
     def add(self, t: Turn) -> None:
@@ -42,7 +44,7 @@ class RunStats:
         return (
             f"turns {self.turns}, tool calls {self.tool_calls} ({self.failures} failed), "
             f"tokens in {self.input_tokens} / cached {self.cache_read} / out {self.output_tokens}, "
-            f"~${self.cost:.3f}, {time.time() - self.started:.0f}s"
+            f"~${self.cost:.3f}, {time.time() - self.started:.0f}s (model {self.model_seconds:.0f}s, actions {self.game_seconds:.0f}s)"
         )
 
 
@@ -114,7 +116,9 @@ class Agent:
                 self._say(f"stopping: spend cap ${self.max_cost:.2f} reached")
                 break
             stats.turns += 1
+            t0 = time.time()
             turn = self.backend.step()
+            stats.model_seconds += time.time() - t0
             stats.add(turn)
 
             for text in turn.texts:
@@ -150,9 +154,11 @@ class Agent:
                     text, err = f"arguments were not valid JSON: {call.raw[:200]}", True
                 else:
                     self._say(f"  -> {call.name} {json.dumps(call.args)}")
+                    t0 = time.time()
                     text, err = self.tools.run(call.name, call.args)
+                    stats.game_seconds += time.time() - t0
                 stats.failures += int(err)
-                if call.name == "check_house":
+                if call.name in ("check_house", "build_house"):
                     self.verified = not err
                     self.last_check = text.splitlines()[0]
                 elif call.name not in ("observe", "remember"):

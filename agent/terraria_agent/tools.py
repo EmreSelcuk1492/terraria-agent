@@ -64,9 +64,18 @@ TOOLS: list[dict[str, Any]] = [
         {"item": _STR, "x": _INT, "y": _INT},
     ),
     _tool(
+        "obtain",
+        "BEST FIRST CHOICE for getting any item. Ends with at least `count` of `item` in your inventory, all in one call: "
+        "cuts trees, mines ore/stone, fights slimes for Gel, crafts every intermediate, and places or walks to the "
+        "stations each recipe needs. E.g. obtain WoodenTable 1, obtain WoodWall 32, obtain CopperPickaxe 1. "
+        "`count` is the total you want to hold, not how many more.",
+        {"item": _STR, "count": _INT},
+    ),
+    _tool(
         "craft",
-        "Craft an item `count` times. You must be standing near the required crafting station "
-        "(e.g. WorkBenches, Furnaces, Anvils). On failure it lists missing ingredients and stations.",
+        "Craft an item `count` times from what you already carry. Finds or places the station by itself "
+        "(walks to a nearby one, places one from your inventory, or makes a WorkBench from Wood). Doesn't gather: "
+        "use obtain for that. On failure it lists missing ingredients.",
         {"item": _STR, "count": _INT},
     ),
     _tool(
@@ -86,6 +95,12 @@ TOOLS: list[dict[str, Any]] = [
         {"seconds": {"type": "number"}},
     ),
     _tool(
+        "dig_down",
+        "Dig straight down under your feet until `target` tiles (e.g. Stone, IronOre) are nearby, up to `max_depth` "
+        "tiles. Use it when mine_nearest finds none in view. obtain already does this by itself.",
+        {"target": _STR, "max_depth": _INT},
+    ),
+    _tool(
         "build_room",
         "Build an enclosed room in one go: solid block frame, background walls inside, a door in the right wall. "
         "(x, y) is the bottom-left corner: x = left wall column, y = floor row (usually the ground row under your feet, "
@@ -95,6 +110,14 @@ TOOLS: list[dict[str, Any]] = [
          "block": {"type": "string", "description": "block item for the frame, e.g. Wood"},
          "wall": {"type": "string", "description": "wall item, e.g. WoodWall"},
          "door": {"type": "string", "description": "door item, e.g. WoodenDoor"}},
+    ),
+    _tool(
+        "build_house",
+        "The whole house goal in one call: picks a flat spot near you (or uses x, y = left wall column, floor row), "
+        "gathers and crafts everything, builds a 10x6 room, places a work bench, table and chair (and a torch if you "
+        "have one), then runs check_house. Takes a few minutes of game time. If interrupted (an enemy hits you), "
+        "deal with the threat and call it again: it resumes on the same site. Pass null for x and y to auto-pick.",
+        {"x": {"type": ["integer", "null"]}, "y": {"type": ["integer", "null"]}},
     ),
     _tool(
         "check_house",
@@ -110,7 +133,8 @@ TOOLS: list[dict[str, Any]] = [
     ),
 ]
 
-SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "place", "craft", "attack", "use_item", "wait", "build_room", "check_house"}
+SKILL_TOOLS = {"move_to", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
+               "build_house", "check_house"}
 
 
 class ToolExecutor:

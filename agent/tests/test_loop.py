@@ -172,3 +172,55 @@ def test_until_house_pushes_back_then_stops_when_verified(bridge, tmp_path):
     assert stats.turns == 10  # stopped right after the passing check
     pushback = claude.requests[1]["messages"][-1]["content"]
     assert "Not done yet" in pushback
+
+
+def test_obtain_gathers_and_crafts_through_stations(bridge, tmp_path):
+    ex = ToolExecutor(bridge, Memory(tmp_path / "l.md"))
+    ex.run("observe", {})
+    text, err = ex.run("obtain", {"item": "WoodenTable", "count": 1})
+    assert not err and "have 1 WoodenTable" in text and "+1 WoodenTable" in text
+
+
+def test_build_house_verifies_in_one_call(bridge, tmp_path):
+    agent = Agent(bridge, Memory(tmp_path / "l.md"), _Scripted([("build_house", {"x": None, "y": None})]), until="house", verbose=False)
+    agent.run("build a house")
+    assert agent.verified
+
+
+def test_history_trims_in_blocks_so_the_prompt_prefix_stays_cached():
+    b = OllamaBackend(keep_results=2)
+    b.start("sys", "Goal: g\n\nWhat you see right now:\nYOU (1,1)")
+    views = []
+    for i in range(7):
+        c = Call(f"c{i}", "wait", {})
+        b.messages.append({"role": "assistant", "content": "", "tool_calls": []})
+        b.add_results([(c, f"OK: step {i}\nmore detail", False)])
+        views.append(b._view())
+    changed = sum(1 for a, z in zip(views, views[1:]) if z[: len(a)] != a)
+    assert changed <= 3  # trims at 4 and 6 results, not on every step
+
+
+class _Scripted:
+    """Minimal backend that plays a list of tool calls, then stops."""
+
+    name, model, price = "scripted", "s", (0, 0, 0, 0)
+
+    def __init__(self, calls):
+        self.calls = list(calls)
+
+    def start(self, system, first_user):
+        pass
+
+    def step(self):
+        from terraria_agent.backends import Turn
+
+        if not self.calls:
+            return Turn(texts=["DONE"])
+        name, args = self.calls.pop(0)
+        return Turn(calls=[Call("x", name, args)], stop="tool_use")
+
+    def add_results(self, results):
+        pass
+
+    def add_user(self, text):
+        pass

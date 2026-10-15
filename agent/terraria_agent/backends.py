@@ -159,6 +159,10 @@ class _ChatBackend(Backend):
     Small models have small context windows, so the history sent each step is trimmed: only the last
     `keep_results` tool results are sent in full; older ones shrink to their first line, and old
     observations are dropped (the model can always call observe again).
+
+    Trimming happens in blocks of `keep_results`, not one result per turn. Local servers reuse the cached
+    prompt up to the first changed token, so a history that only grows at the end skips re-reading it;
+    trimming one old message every turn would force a near-full re-read on each step.
     """
 
     def __init__(self, model: str, keep_results: int = 4, no_think: bool = False):
@@ -175,14 +179,16 @@ class _ChatBackend(Backend):
 
     def _view(self) -> list[dict[str, Any]]:
         tool_idx = [i for i, m in enumerate(self.messages) if m["role"] == "tool"]
-        old = set(tool_idx[: max(0, len(tool_idx) - self.keep_results)])
+        k = max(1, self.keep_results)
+        cut = max(0, (len(tool_idx) - k) // k * k)
+        old = set(tool_idx[:cut])
         out = []
         for i, m in enumerate(self.messages):
             if i in old:
                 content = m["content"]
                 short = "[old observation removed; call observe for a fresh one]" if content.startswith("YOU (") else content.splitlines()[0]
                 m = {**m, "content": short}
-            elif i == 1 and len(tool_idx) > self.keep_results:
+            elif i == 1 and cut > 0:
                 goal = m["content"].split("\n\nWhat you see right now:")[0]
                 m = {**m, "content": goal + "\n\n[initial observation removed; call observe for a fresh one]"}
             out.append(m)
@@ -209,21 +215,52 @@ class OllamaBackend(_ChatBackend):
 
     name = "ollama"
 
+    KEEP_ALIVE = "30m"  # keep the weights in memory between turns and between runs
+
     def __init__(self, model: str = "qwen3:8b", base_url: str = "http://127.0.0.1:11434", num_ctx: int = 16384,
-                 keep_results: int = 4, no_think: bool = False, timeout: float = 600):
-        super().__init__(model, keep_results, no_think)
+                 keep_results: int = 4, think: str = "auto", max_output: int = 2048, timeout: float = 600):
+        super().__init__(model, keep_results, no_think=think == "off")
         self.num_ctx = num_ctx
+        self.max_output = max_output
+        self.think = self._think_value(model, think)
         self.http = httpx.Client(base_url=base_url, timeout=timeout)
 
+    @staticmethod
+    def _think_value(model: str, think: str) -> bool | str:
+        """gpt-oss always reasons and takes a level (low/medium/high); Qwen3-style models take on/off."""
+        if model.startswith("gpt-oss"):
+            return {"auto": "low", "off": "low", "on": "medium"}.get(think, think)
+        if think in ("off", "auto"):
+            return False  # with obtain/build_house doing the planning, fast turns beat long thinking
+        return True
+
+    def start(self, system: str, first_user: str) -> None:
+        super().start(system, first_user)
+        self.prewarm()
+
+    def prewarm(self) -> None:
+        """Load the model before the first turn so a cold load isn't counted as thinking time."""
+        try:
+            self.http.post("/api/generate", json={"model": self.model, "keep_alive": self.KEEP_ALIVE})
+        except httpx.HTTPError:
+            pass  # the real request will surface the error
+
+    RETRIES = 3  # gpt-oss now and then emits a tool call Ollama can't parse and gets a 500; a resample usually fixes it
+
     def step(self) -> Turn:
-        r = self.http.post("/api/chat", json={
+        body = {
             "model": self.model,
             "messages": self._view(),
             "tools": _openai_tools(),
             "stream": False,
-            "think": not self.no_think,  # hard switch; the /no_think prompt hint alone is ignored when tools are on
-            "options": {"num_ctx": self.num_ctx, "temperature": 0.6},
-        })
+            "think": self.think,  # hard switch; the /no_think prompt hint alone is ignored when tools are on
+            "keep_alive": self.KEEP_ALIVE,
+            "options": {"num_ctx": self.num_ctx, "temperature": 0.6, "num_predict": self.max_output},
+        }
+        for attempt in range(self.RETRIES):
+            r = self.http.post("/api/chat", json=body)
+            if r.status_code < 500 or attempt == self.RETRIES - 1:
+                break
         r.raise_for_status()
         data = r.json()
         msg = data["message"]

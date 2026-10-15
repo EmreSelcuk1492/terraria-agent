@@ -88,6 +88,25 @@ namespace TerrariaAgentBridge.Skills
             else skipped++;
         }
 
+        /// <summary>What building this room still takes: frame blocks to place, background walls to place, whether a door is needed.</summary>
+        public (int blocks, int walls, bool door) Requirements()
+        {
+            int blocks = 0, walls = 0;
+            for (int i = x; i <= Right; i++)
+            for (int j = Top; j <= y; j++)
+            {
+                if (IsFrame(i, j)) { if (!Game.Solid(i, j)) blocks++; }
+                else if (IsInterior(i, j) && Framing.GetTileSafely(i, j).WallType == 0) walls++;
+            }
+            bool door = true;
+            for (int row = y - 3; row <= y - 1; row++)
+            {
+                Tile t = Framing.GetTileSafely(Right, row);
+                if (t.HasTile && (t.TileType == TileID.ClosedDoor || t.TileType == TileID.OpenDoor)) door = false;
+            }
+            return (blocks, walls, door);
+        }
+
         private bool Plan(Player p)
         {
             planned = true;

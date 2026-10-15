@@ -89,46 +89,50 @@ namespace TerrariaAgentBridge.Skills
         }
     }
 
-    /// <summary>Craft an item `count` times. Must already be standing next to the required station(s).</summary>
+    /// <summary>
+    /// Craft an item `count` times. Missing stations are handled: it walks to a placed one nearby, or places one
+    /// from the inventory, or crafts a WorkBench from Wood. It doesn't gather ingredients (that's `obtain`).
+    /// </summary>
     public class Craft : Skill
     {
         public override string Name => "craft";
+        public override int TimeoutTicks => 60 * 60;
         private readonly string itemName;
         private readonly int count;
+        private int type = -1, made;
+        private Skill station;
+        private readonly HashSet<int> tried = new();
 
         public Craft(string item, int count) { itemName = item; this.count = Math.Clamp(count, 1, 999); }
 
         public override void Tick(Player p)
         {
-            int type = Game.ResolveItem(itemName);
-            if (type < 0) { Fail($"unknown item '{itemName}'"); return; }
-
-            var recipes = Enumerable.Range(0, Recipe.numRecipes).Select(i => Main.recipe[i])
-                .Where(r => r.createItem.type == type && !r.Disabled).ToList();
-            if (recipes.Count == 0) { Fail($"{Game.ItemName(type)} has no crafting recipe"); return; }
-
-            int made = 0;
-            var problems = new List<string>();
-            while (made < count)
+            if (station != null)
             {
-                Recipe usable = recipes.FirstOrDefault(r => Crafting.MissingStations(p, r).Count == 0 && Crafting.MissingIngredients(p, r).Count == 0);
-                if (usable == null) break;
-                Crafting.Consume(p, usable);
-                p.QuickSpawnItem(p.GetSource_Misc("agent_craft"), type, usable.createItem.stack);
-                made += 1;
+                if (Step(station, p)) return;
+                if (!station.Ok) { Fail($"crafted {made}/{count} {Game.ItemName(type)}: {station.Message}"); return; }
+                station = null;
+            }
+            if (type < 0)
+            {
+                type = Game.ResolveItem(itemName);
+                if (type < 0) { Fail($"unknown item '{itemName}'"); return; }
+                if (Crafting.RecipesFor(type).Count == 0) { Fail($"{Game.ItemName(type)} has no crafting recipe"); return; }
             }
 
-            if (made == count) { Succeed($"crafted {Game.ItemName(type)} x{made}"); return; }
+            made += Crafting.CraftNow(p, type, count - made);
+            if (made >= count) { Succeed($"crafted {Game.ItemName(type)} x{made}"); return; }
 
-            foreach (Recipe r in recipes.Take(3))
+            // Only ingredients missing -> report. A station missing -> go get it, once per station type.
+            Recipe r = Crafting.RecipesFor(type).FirstOrDefault(r => Crafting.MissingIngredients(p, r).Count == 0);
+            int need = r == null ? -1 : Crafting.MissingStationTypes(p, r).FirstOrDefault(t => !tried.Contains(t), -1);
+            if (need >= 0)
             {
-                var stations = Crafting.MissingStations(p, r);
-                var ingredients = Crafting.MissingIngredients(p, r);
-                problems.Add($"recipe [{Crafting.Describe(r)}]" +
-                    (stations.Count > 0 ? $" missing station: {string.Join(", ", stations)} (stand next to it)" : "") +
-                    (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : ""));
+                tried.Add(need);
+                station = new EnsureStation(need, gather: false);
+                return;
             }
-            string msg = $"crafted {made}/{count} {Game.ItemName(type)}. " + string.Join("; ", problems);
+            string msg = $"crafted {made}/{count} {Game.ItemName(type)}. {Crafting.Problems(p, type)}";
             if (made > 0) Succeed(msg); else Fail(msg);
         }
     }
@@ -143,6 +147,7 @@ namespace TerrariaAgentBridge.Skills
         private int npcIndex = -1;
         private int kills;
         private readonly int maxKills;
+        private string fellBack;
         private readonly MoveTo mover = new(0, 0);
 
         public Attack(string target, int maxKills)
@@ -159,11 +164,13 @@ namespace TerrariaAgentBridge.Skills
             if (npcIndex < 0 || !Main.npc[npcIndex].active || Main.npc[npcIndex].life <= 0)
             {
                 if (npcIndex >= 0) kills++;
-                if (kills >= maxKills) { Succeed($"killed {kills}"); return; }
-                npcIndex = FindTarget(p);
+                if (kills >= maxKills) { Succeed($"killed {kills}{fellBack}"); return; }
+                npcIndex = FindTarget(p, target);
+                if (npcIndex < 0 && target != "nearest" && (npcIndex = FindTarget(p, "nearest")) >= 0)
+                    fellBack = $" (no '{target}' here; fought the nearest hostile, {Main.npc[npcIndex].FullName})";
                 if (npcIndex < 0)
                 {
-                    if (kills > 0) Succeed($"killed {kills}; no more targets nearby");
+                    if (kills > 0) Succeed($"killed {kills}{fellBack}; no more targets nearby");
                     else Fail($"no hostile '{target}' within 40 tiles");
                     return;
                 }
@@ -189,7 +196,7 @@ namespace TerrariaAgentBridge.Skills
             if (inRange) p.controlUseItem = true;
         }
 
-        private int FindTarget(Player p)
+        private static int FindTarget(Player p, string target)
         {
             int best = -1;
             float bestD = 40f;

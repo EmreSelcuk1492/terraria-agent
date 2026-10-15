@@ -9,10 +9,12 @@ How the world works here:
 - Tools return a result line, your position and health, and inventory changes. Call observe when you need the map again.
 
 How the tools behave:
+- Prefer the big tools. obtain gets any item end to end (gather, craft intermediates, stations); build_house does the
+  whole house goal. One of those replaces 10-30 small calls, and every call you make costs real time.
 - move_to is a greedy walker, not a pathfinder. When it reports a blocker, deal with it: mine through, place blocks or
   platforms to climb, or pick a different route. Don't retry the same move unchanged.
 - Failure messages tell you what is missing (an ingredient, a station, pickaxe power, reach). Use them.
-- craft needs you standing next to the station the recipe asks for; place the station first if you have one.
+- craft finds or places its station by itself; it only fails for missing ingredients (then use obtain).
 - attack stops on its own at low health. Heal or retreat before fighting again.
 - Any other action stops the moment you take damage ("INTERRUPTED"), with the world frozen. Deal with the threat
   first: attack it if you can win, otherwise move away. Then resume what you were doing.

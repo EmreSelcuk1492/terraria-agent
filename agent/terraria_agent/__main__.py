@@ -28,7 +28,8 @@ def make_backend(a: argparse.Namespace):
         return backends.ClaudeBackend(model=model, effort=a.effort)
     if a.backend == "ollama":
         return backends.OllamaBackend(model=model, base_url=a.base_url or "http://127.0.0.1:11434", num_ctx=a.num_ctx,
-                                      keep_results=a.keep_results, no_think=a.no_think)
+                                      keep_results=a.keep_results, think="off" if a.no_think else a.think,
+                                      max_output=a.max_output)
     if a.backend == "openai":
         if not (a.base_url and model):
             sys.exit("--backend openai needs --base-url and --model")
@@ -56,7 +57,10 @@ def main() -> int:
     g.add_argument("--api-key-env", default="OPENAI_API_KEY", help="env var holding the key for --backend openai")
     g.add_argument("--num-ctx", type=int, default=16384, help="ollama context window in tokens")
     g.add_argument("--keep-results", type=int, default=4, help="tool results kept in full; older ones are shortened")
-    g.add_argument("--no-think", action="store_true", help="ask Qwen3-style models to skip thinking (faster, dumber)")
+    g.add_argument("--think", default="auto", choices=["auto", "off", "on", "low", "medium", "high"],
+                   help="ollama reasoning: auto = gpt-oss low, others off (fastest); low/medium/high are gpt-oss levels")
+    g.add_argument("--no-think", action="store_true", help="same as --think off")
+    g.add_argument("--max-output", type=int, default=2048, help="ollama cap on tokens per turn (thinking included)")
     a = ap.parse_args()
 
     bridge = BridgeClient(a.bridge)

@@ -6,11 +6,47 @@ namespace TerrariaAgentBridge
 {
     public static class Crafting
     {
-        public static List<string> MissingStations(Player p, Recipe r)
+        public static List<string> MissingStations(Player p, Recipe r) =>
+            MissingStationTypes(p, r).Select(Game.TileName).ToList();
+
+        public static List<int> MissingStationTypes(Player p, Recipe r) =>
+            r.requiredTile.Where(t => t >= 0 && !p.adjTile[t]).ToList();
+
+        /// <summary>
+        /// adjTile is normally rebuilt in Player.Update. While the world is frozen (and on the tick a station
+        /// was just placed) it is stale, so a skill that crafts must refresh it first.
+        /// </summary>
+        public static void RefreshStations(Player p) => p.AdjTiles();
+
+        public static List<Recipe> RecipesFor(int type) => Enumerable.Range(0, Recipe.numRecipes).Select(i => Main.recipe[i])
+            .Where(r => r.createItem.type == type && !r.Disabled).ToList();
+
+        /// <summary>Crafts up to `times` batches with whatever recipe is usable right now. Returns batches made.</summary>
+        public static int CraftNow(Player p, int type, int times)
         {
-            // adjTile is refreshed every tick from the stations around the player.
-            return r.requiredTile.Where(t => t >= 0 && !p.adjTile[t]).Select(Game.TileName).ToList();
+            RefreshStations(p);
+            var recipes = RecipesFor(type);
+            int made = 0;
+            while (made < times)
+            {
+                Recipe usable = recipes.FirstOrDefault(r => MissingStationTypes(p, r).Count == 0 && MissingIngredients(p, r).Count == 0);
+                if (usable == null) break;
+                Consume(p, usable);
+                p.QuickSpawnItem(p.GetSource_Misc("agent_craft"), type, usable.createItem.stack);
+                made++;
+            }
+            return made;
         }
+
+        /// <summary>Why each of the first few recipes for `type` can't be crafted here.</summary>
+        public static string Problems(Player p, int type) => string.Join("; ", RecipesFor(type).Take(3).Select(r =>
+        {
+            var stations = MissingStations(p, r);
+            var ingredients = MissingIngredients(p, r);
+            return $"recipe [{Describe(r)}]" +
+                (stations.Count > 0 ? $" missing station: {string.Join(", ", stations)}" : "") +
+                (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : "");
+        }));
 
         /// <summary>Item types that satisfy an ingredient, honouring recipe groups ("any wood", "any iron bar").</summary>
         public static HashSet<int> Accepted(Recipe r, Item ingredient)

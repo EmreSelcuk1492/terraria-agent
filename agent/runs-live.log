@@ -1,25 +1,11 @@
-goal: Build a wooden house with a chair, a table and a work bench inside  [ollama: qwen3:8b]
-  -> build_room {"wall": "WoodWall", "width": 10, "x": 3180, "y": 360, "block": "Wood", "door": "WoodenDoor", "height": 6}
-     FAILED: not enough materials for a 10x6 room at (3180,360): need 32 WoodWall (have 0), 1 WoodenDoor (have 0) (0.0s game time)
-     you: (3191,360) hp 100/100, holding CopperAxe
-
-ollama: I need to gather more materials before building the room. Let's collect the required WoodWall and WoodenDoor items. I'll start by gathering WoodWall first.
-  -> mine_nearest {"target": "Stone", "count": 32}
-     FAILED: world unloaded (100.5s game time)
-     you: (3186,360) hp 0/100 DEAD, holding CopperShortsword
-     inventory: +4 Gel, +17 CopperCoin
-
-ollama: I have died, but I can try again. Let me first gather the necessary materials for the wooden house. I'll start by gathering WoodWall and WoodenDoor items. I'll also need to collect more Wood for crafting. Let me move to a safe location and gather the required resources.
-  (not verified yet, pushing back)
-  -> move_to {"x": 3188, "y": 361, "tolerance": 1}
-     move_to rejected: not in a world
-  -> move_to {"tolerance": 1, "x": 3186, "y": 360}
-     move_to rejected: not in a world
-  -> move_to {"y": 360, "tolerance": 1, "x": 3185}
-     move_to rejected: not in a world
-  -> move_to {"tolerance": 1, "x": 3184, "y": 360}
-     move_to rejected: not in a world
-  -> move_to {"x": 3183, "y": 360, "tolerance": 1}
-     move_to rejected: not in a world
-  -> move_to {"tolerance": 1, "x": 3182, "y": 360}
-     move_to rejected: not in a world
+goal: Build a house out of stone. Use build_room with block StoneBlock, wall StoneWall, door WoodenDoor, width 14, height 8, on flat ground near spawn. Get the materials first with obtain (it chops wood and digs down for stone by itself): enough StoneBlock for the frame, StoneWall for the background, and a WoodenDoor. After digging, come back up to the surface to build. Inside the stone house place a Furnace (obtain Furnace: 20 StoneBlock + 4 Wood + 3 Torch), a WorkBench, a WoodenTable and a WoodenChair, and a Torch on the wall. The furnace is REQUIRED: the goal is not done until the furnace is placed inside the stone house and check_house passes for the stone house. If an enemy interrupts you, attack nearest, then continue.  [ollama: gpt-oss:20b]
+  -> obtain {"count": 1, "item": "StoneBlock"}
+     FAILED: cancelled by agent (6.0s game time)
+     you: (2092,249) hp 100/100, holding CopperShortsword
+  -> obtain {"count": 64, "item": "StoneBlock"}
+     FAILED: INTERRUPTED: took 6 damage (hp 94/100). Hostiles: Green Slime at (2090,249) 1 tiles away, hp 14/14; Slime at (2114,251) 22 tiles away, hp 4/25. Fight (attack), move away, or heal before continuing. (18.6s game time)
+     you: (2091,249) hp 94/100, holding CopperShortsword
+  -> attack {"max_kills": 1, "target": "nearest"}
+     OK: killed 1 (12.7s game time)
+     you: (2118,250) hp 59/100, holding CopperShortsword
+     inventory: +3 Gel, +51 CopperCoin
