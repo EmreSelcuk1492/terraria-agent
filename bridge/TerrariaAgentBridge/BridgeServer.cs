@@ -144,6 +144,19 @@ namespace TerrariaAgentBridge
                         ["player"] = InWorld ? Main.ActivePlayerFileData?.Name : null, ["world"] = InWorld ? Main.worldName : null,
                     };
 
+                case "POST /say":
+                {
+                    // Narration: show a line in the in-game chat (the player sees what the AI is doing and why).
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    string text = doc.RootElement.TryGetProperty("text", out var t) ? t.GetString() : "";
+                    if (!InWorld || string.IsNullOrWhiteSpace(text)) return Error("nothing to say or not in a world");
+                    return await OnMainThread(() =>
+                    {
+                        Main.NewText("[AI] " + text, 120, 220, 255);
+                        return new Dictionary<string, object> { ["ok"] = true };
+                    });
+                }
+
                 case "POST /save":
                     if (!InWorld) return Error("not in a world");
                     return await OnMainThread(() =>
@@ -175,7 +188,9 @@ namespace TerrariaAgentBridge
                         FreezeWhileThinking = freeze.GetBoolean();
                     if (doc.RootElement.TryGetProperty("background", out var bg))
                         Background = bg.GetBoolean();
-                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background };
+                    if (doc.RootElement.TryGetProperty("guard", out var guard))
+                        SkillRunner.Guard = guard.GetBoolean();
+                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background, ["guard"] = SkillRunner.Guard };
                 }
 
                 case "POST /cancel":

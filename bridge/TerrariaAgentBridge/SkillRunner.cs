@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Terraria;
+using TerrariaAgentBridge.Skills;
 
 namespace TerrariaAgentBridge
 {
@@ -41,6 +43,8 @@ namespace TerrariaAgentBridge
         }
 
         internal void ForceFail(string message) => Fail(message);
+
+        internal static bool RunChild(Skill child, Player p) => Step(child, p);
     }
 
     public static class SkillRunner
@@ -48,6 +52,16 @@ namespace TerrariaAgentBridge
         private static Skill current;
         private static TaskCompletionSource<object> completion;
         private static int lastLife;
+
+        // Bodyguard: with Guard on (the default), an enemy in reach or a hit doesn't end the running skill. It is
+        // paused, the guard fights (and drinks a potion when low), then the skill resumes. Guard time doesn't count
+        // toward the skill's timeout. With Guard off, the old behaviour: a hit ends skills that InterruptOnDamage.
+        public static volatile bool Guard = true;
+        private static Attack defense;
+        private static int defenseTicks, guardCooldown;
+        private static string defenseTarget;
+        private static readonly List<string> guardNotes = new();
+        private const int GuardRange = 6, MaxDefenseTicks = 60 * 20;
 
         public static bool IsRunning => current != null;
 
@@ -57,6 +71,8 @@ namespace TerrariaAgentBridge
             Cancel($"interrupted by {skill.Name}");
             current = skill;
             lastLife = Main.LocalPlayer.statLife;
+            defense = null;
+            guardNotes.Clear();
             completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             return completion.Task;
         }
@@ -71,10 +87,19 @@ namespace TerrariaAgentBridge
         public static void Tick(Player p)
         {
             if (current == null) return;
+            bool hurt = p.statLife < lastLife;
+            if (!p.dead && Guard && GuardTick(p, hurt))
+            {
+                lastLife = p.statLife;
+                return;
+            }
+
             current.Ticks++;
             if (p.dead)
                 current.ForceFail($"you are dead; respawning in about {p.respawnTimer / 60 + 1}s at spawn. Call wait, then observe.");
-            else if (current.InterruptOnDamage && p.statLife < lastLife)
+            else if (Guard && hurt && p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p))
+                current.ForceFail($"LOW HEALTH {p.statLife}/{p.statLifeMax2} and no healing potion. {Observation.ThreatSummary(p)} Get to safety (home, or away from enemies) and wait to regenerate before continuing.");
+            else if (!Guard && current.InterruptOnDamage && hurt)
                 current.ForceFail($"INTERRUPTED: took {lastLife - p.statLife} damage (hp {p.statLife}/{p.statLifeMax2}). {Observation.ThreatSummary(p)} Fight (attack), move away, or heal before continuing.");
             else if (current.Ticks > current.TimeoutTicks)
                 current.ForceFail($"{current.Name} timed out after {current.TimeoutTicks / 60}s");
@@ -85,9 +110,52 @@ namespace TerrariaAgentBridge
             if (current.Done) Finish(p);
         }
 
+        /// <summary>Runs one guard tick if a fight is on or should start. True = the skill is paused this tick.</summary>
+        private static bool GuardTick(Player p, bool hurt)
+        {
+            if (defense != null)
+            {
+                defenseTicks++;
+                if (p.statLife < p.statLifeMax2 * 0.4f) TryHeal(p);
+                if (defenseTicks < MaxDefenseTicks && Skill.RunChild(defense, p)) return true;
+                if (defense.Ok) guardNotes.Add($"killed {defenseTarget}");
+                defense = null;
+                guardCooldown = 30;
+                return false;
+            }
+            if (current is Attack || --guardCooldown > 0) return false;
+            NPC threat = NearestThreat(p, hurt ? 12 : GuardRange);
+            if (threat == null) return false;
+            if (p.statLife < p.statLifeMax2 * 0.3f && !TryHeal(p)) return false; // too weak to fight: the low-health check decides
+            defense = new Attack("nearest", 1);
+            defenseTarget = threat.FullName;
+            defenseTicks = 0;
+            return true;
+        }
+
+        /// <summary>Nearest enemy within `range` tiles that has a clear line to the player (not behind blocks).</summary>
+        public static NPC NearestThreat(Player p, float range) => Main.npc
+            .Where(n => n.active && !n.friendly && !n.townNPC && n.damage > 0 && n.lifeMax > 5 && !n.dontTakeDamage
+                        && (n.Center - p.Center).Length() / 16f <= range
+                        && Collision.CanHit(p.position, p.width, p.height, n.position, n.width, n.height))
+            .OrderBy(n => (n.Center - p.Center).LengthSquared())
+            .FirstOrDefault();
+
+        /// <summary>Drink the best healing potion, like the quick-heal key. False if none or on potion cooldown.</summary>
+        public static bool TryHeal(Player p)
+        {
+            if (p.potionDelay > 0 || p.QuickHeal_GetItemToUse() == null) return false;
+            int before = p.statLife;
+            p.QuickHeal();
+            if (p.statLife > before) guardNotes.Add($"healed {before}->{p.statLife}");
+            return p.statLife > before;
+        }
+
         private static void Finish(Player p)
         {
             var skill = current;
+            string guard = guardNotes.Count > 0 ? $" [guard: {string.Join(", ", guardNotes.GroupBy(n => n).Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key))}]" : "";
+            defense = null;
             var tcs = completion;
             current = null;
             completion = null;
@@ -95,7 +163,7 @@ namespace TerrariaAgentBridge
             {
                 ["ok"] = skill.Ok,
                 ["skill"] = skill.Name,
-                ["message"] = skill.Message,
+                ["message"] = skill.Message + guard,
                 ["ticks"] = skill.Ticks,
                 ["player"] = Observation.PlayerSummary(p),
                 ["inventory"] = Observation.Inventory(p),

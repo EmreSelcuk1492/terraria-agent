@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.Enums;
 using Terraria.ID;
 
 namespace TerrariaAgentBridge.Skills
@@ -230,6 +231,44 @@ namespace TerrariaAgentBridge.Skills
         }
     }
 
+    /// <summary>Terraria's own town-NPC housing check, the one the housing menu runs.</summary>
+    public static class Housing
+    {
+        public static (bool ok, string detail) Vanilla(int x, int y)
+        {
+            if (!WorldGen.StartRoomCheck(x, y))
+                return (false, WorldGen.roomCheckFailureReason switch
+                {
+                    TownNPCRoomCheckFailureReason.HoleInWallIsTooBig => "a background wall has a gap bigger than 2 tiles",
+                    TownNPCRoomCheckFailureReason.RoomIsTooSmall => "room is too small (needs 60+ tiles including the frame)",
+                    TownNPCRoomCheckFailureReason.RoomIsTooBig => "room is too big or not enclosed",
+                    TownNPCRoomCheckFailureReason.RoomCheckStartedInASolidTile => "check point is inside a block",
+                    TownNPCRoomCheckFailureReason.TooCloseToWorldEdge => "too close to the world edge",
+                    _ => "not a valid room",
+                });
+            if (!WorldGen.RoomNeeds(NPCID.Guide))
+            {
+                // RoomNeeds' own flags are private; it reads the same houseTile table, so read it here too.
+                bool Has(int[] set) => set.Any(t => WorldGen.houseTile[t]);
+                var missing = new List<string>();
+                if (!Has(TileID.Sets.RoomNeeds.CountsAsTorch)) missing.Add("light source (Torch)");
+                if (!Has(TileID.Sets.RoomNeeds.CountsAsDoor)) missing.Add("door");
+                if (!Has(TileID.Sets.RoomNeeds.CountsAsTable)) missing.Add("table");
+                if (!Has(TileID.Sets.RoomNeeds.CountsAsChair)) missing.Add("chair");
+                return (false, "missing " + string.Join(", ", missing));
+            }
+            WorldGen.ScoreRoom();
+            if (WorldGen.hiScore <= 0) return (false, "room is valid but unusable (evil biome tiles, or no 3x3 standing spot on the floor)");
+            return (true, $"valid NPC house ({WorldGen.numRoomTiles} tiles)");
+        }
+
+        /// <summary>Town NPCs living in the world, and where each one's home is (or "homeless").</summary>
+        public static List<string> TownNpcs() => Main.npc
+            .Where(n => n.active && n.townNPC)
+            .Select(n => n.homeless ? $"{n.FullName} (homeless)" : $"{n.FullName} (home {n.homeTileX},{n.homeTileY})")
+            .ToList();
+    }
+
     /// <summary>
     /// Flood-fills the room containing (x, y) and reports exactly what a house still needs:
     /// enclosed, background walls, a door, a chair, a table, a work bench (and whether there is light).
@@ -295,7 +334,12 @@ namespace TerrariaAgentBridge.Skills
                 if (!bench) problems.Add("no work bench inside");
             }
             string size = leaked ? "" : $" interior {seen.Count} tiles.";
-            string lightNote = light ? " Has light." : " No light source (fine for this goal; a torch would make it NPC-valid).";
+            string lightNote = light ? " Has light." : " No light source (a Torch would make it NPC-valid).";
+            if (!leaked)
+            {
+                var (npcOk, why) = Housing.Vanilla(x, y);
+                lightNote += npcOk ? $" NPC-VALID: {why}." : $" Not NPC-valid yet: {why}.";
+            }
             if (problems.Count == 0) Succeed($"HOUSE OK: enclosed, walls, door, chair, table, work bench.{size}{lightNote}");
             else Fail("house not done: " + string.Join("; ", problems) + "." + size);
         }

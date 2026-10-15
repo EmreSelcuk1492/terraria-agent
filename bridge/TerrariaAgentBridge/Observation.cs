@@ -102,6 +102,10 @@ namespace TerrariaAgentBridge
                 ["surface_y"] = (int)Main.worldSurface,
                 ["size"] = new[] { Main.maxTilesX, Main.maxTilesY },
                 ["bosses_defeated"] = Bosses(),
+                ["rock_layer_y"] = (int)Main.rockLayer,
+                ["town_npcs"] = Skills.Housing.TownNpcs(),
+                ["max_life"] = Main.LocalPlayer.statLifeMax,
+                ["defense"] = Main.LocalPlayer.statDefense,
             };
         }
 

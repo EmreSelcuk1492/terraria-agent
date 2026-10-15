@@ -44,6 +44,8 @@ namespace TerrariaAgentBridge.Skills
                 if (Step(approach, p)) return;
                 if (!Game.InReach(p, x, y, p.inventory[toolSlot].tileBoost))
                 {
+                    // Can't walk there (buried under dirt, up a cliff): dig a tunnel to it, once.
+                    if (approach is MoveTo) { approach = new TunnelTo(x, y, 2); return; }
                     Fail($"could not get within reach of ({x},{y}): {approach.Message}");
                     return;
                 }
@@ -205,8 +207,10 @@ namespace TerrariaAgentBridge.Skills
         public override bool InterruptOnDamage => true;
 
         private readonly int tileType, maxDepth;
-        private int startY = -1;
+        private int startY = -1, sidesteps;
         private Mine current;
+        private Skill walk;
+        private string lastBlock;
 
         public DigDown(int tileType, int maxDepth = 80)
         {
@@ -216,10 +220,24 @@ namespace TerrariaAgentBridge.Skills
 
         public override void Tick(Player p)
         {
+            if (walk != null)
+            {
+                if (Step(walk, p)) return;
+                walk = null; // even a partial sidestep gives a new column to try
+            }
             if (current != null)
             {
                 if (Step(current, p)) return;
-                if (!current.Ok) { Fail($"digging down stopped: {current.Message}"); return; }
+                if (!current.Ok)
+                {
+                    // Ground that won't break (a tree on it, too hard for the pickaxe): try a column a few tiles over.
+                    lastBlock = current.Message;
+                    current = null;
+                    if (++sidesteps > 4) { Fail($"digging down stopped after {sidesteps - 1} sidesteps: {lastBlock}"); return; }
+                    int off = (sidesteps % 2 == 1 ? 1 : -1) * 3 * ((sidesteps + 1) / 2);
+                    walk = new MoveTo(Game.TileX(p) + off, Game.TileY(p), 1);
+                    return;
+                }
                 current = null;
             }
             if (p.velocity.Y != 0) return; // still falling into the hole

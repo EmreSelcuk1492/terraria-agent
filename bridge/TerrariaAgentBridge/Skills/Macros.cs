@@ -231,6 +231,8 @@ namespace TerrariaAgentBridge.Skills
             {
                 int tile = ContentSamples.ItemsByType[type].createTile;
                 if (tile < 0) { Fail($"{ItemLabel} can't be crafted or mined; it comes from chests, enemies or shops"); return; }
+                // Ores: tunnel to the nearest vein and clear it (and the next ones) in one go.
+                if (TileID.Sets.Ore[tile]) { child = new MineVein(Game.TileName(tile), count - have, 60); return; }
                 // Stone deep under a dirt surface is in view but can't be walked to: dig down to it first.
                 if (!DigDown.Near(p, tile) && digs < 3) { digs++; child = new DigDown(tile); return; }
                 child = new MineNearest(tile, Math.Min(count - have, 50));
@@ -239,32 +241,69 @@ namespace TerrariaAgentBridge.Skills
     }
 
     /// <summary>
-    /// The whole house goal in one call: pick a flat spot, gather and craft everything, build the room,
-    /// furnish it (work bench, table, chair, a torch if there is one), and run check_house.
-    /// Safe to call again after an interruption: it reuses the same site and skips what is already done.
+    /// The whole house goal in one call: pick a flat spot near you (or use x, y), gather and craft everything,
+    /// build the room, furnish it (work bench, table, chair, plus extras like Furnace, Chest, Bed, IronAnvil),
+    /// light it with a torch, and run check_house (which includes Terraria's own NPC-housing check).
+    /// material "wood" or "stone". new_house=true builds another house next to the previous ones instead of
+    /// resuming the last site. Safe to call again after an interruption: it reuses the site and skips what is done.
     /// </summary>
     public class BuildHouse : Skill
     {
         public override string Name => "build_house";
-        public override int TimeoutTicks => 60 * 900;
+        public override int TimeoutTicks => 60 * 1200;
         public override bool InterruptOnDamage => true;
 
-        private static (int x, int y)? lastSite;
-        private const int W = 10, H = 6;
+        private static (int x, int y, int w)? lastSite;
+        private static readonly List<(int x, int y, int w)> sites = new();
+        private readonly int W, H;
         private readonly int? askX, askY;
+        private readonly bool newHouse;
+        private readonly int blockItem, wallItem;
+        private readonly string blockName, wallName;
         private int x, y, stage, buildTries;
         private Skill child;
         private readonly Queue<Func<Player, Skill>> todo = new();
+        private readonly HashSet<Skill> optional = new();
         private readonly List<string> notes = new();
+        private readonly List<(int item, int tileA, int tileB, int dx)> furniture = new();
 
-        private static readonly (int item, int tileA, int tileB, int dx)[] Furniture =
+        // Extra furniture, placed after the chair along the floor: (item, tile, alt tile, width).
+        private static readonly Dictionary<string, (int item, int tile, int alt, int width)> Extras = new(StringComparer.OrdinalIgnoreCase)
         {
-            (ItemID.WorkBench, TileID.WorkBenches, TileID.WorkBenches, 1),
-            (ItemID.WoodenTable, TileID.Tables, TileID.Tables2, 4),
-            (ItemID.WoodenChair, TileID.Chairs, TileID.Chairs, 7),
+            ["Furnace"] = (ItemID.Furnace, TileID.Furnaces, TileID.Furnaces, 3),
+            ["Chest"] = (ItemID.Chest, TileID.Containers, TileID.Containers2, 2),
+            ["Bed"] = (ItemID.Bed, TileID.Beds, TileID.Beds, 4),
+            ["IronAnvil"] = (ItemID.IronAnvil, TileID.Anvils, TileID.Anvils, 2),
+            ["LeadAnvil"] = (ItemID.LeadAnvil, TileID.Anvils, TileID.Anvils, 2),
+            ["Sawmill"] = (ItemID.Sawmill, TileID.Sawmill, TileID.Sawmill, 3),
+            ["Loom"] = (ItemID.Loom, TileID.Loom, TileID.Loom, 3),
+            ["Bookcase"] = (ItemID.Bookcase, TileID.Bookcases, TileID.Bookcases, 3),
         };
 
-        public BuildHouse(int? x, int? y) { askX = x; askY = y; }
+        public BuildHouse(int? x, int? y, string material = "wood", int width = 10, int height = 6, IEnumerable<string> extras = null, bool newHouse = false)
+        {
+            askX = x; askY = y;
+            this.newHouse = newHouse;
+            bool stone = material != null && material.StartsWith("stone", StringComparison.OrdinalIgnoreCase);
+            (blockItem, wallItem, blockName, wallName) = stone
+                ? (ItemID.StoneBlock, ItemID.StoneWall, "StoneBlock", "StoneWall")
+                : (ItemID.Wood, ItemID.WoodWall, "Wood", "WoodWall");
+            H = Math.Clamp(height, 6, 9);
+
+            furniture.Add((ItemID.WorkBench, TileID.WorkBenches, TileID.WorkBenches, 1));
+            furniture.Add((ItemID.WoodenTable, TileID.Tables, TileID.Tables2, 4));
+            furniture.Add((ItemID.WoodenChair, TileID.Chairs, TileID.Chairs, 7));
+            int dx = 9;
+            foreach (string e in extras ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(e)) continue;
+                if (!Extras.TryGetValue(e.Trim(), out var ex)) { notes.Add($"unknown extra '{e}' (known: {string.Join(", ", Extras.Keys)})"); continue; }
+                if (dx + ex.width > 15) { notes.Add($"no room for {e} (a house fits about two extras)"); continue; }
+                furniture.Add((ex.item, ex.tile, ex.alt, dx + ex.width / 2));
+                dx += ex.width + 1;
+            }
+            W = Math.Clamp(Math.Max(width, dx + 1), 10, 16); // room for every extra (BuildRoom caps width at 16)
+        }
 
         public override void Tick(Player p)
         {
@@ -276,7 +315,7 @@ namespace TerrariaAgentBridge.Skills
                 if (!done.Ok)
                 {
                     if (done is BuildRoom && done.Message.StartsWith("not enough materials") && ++buildTries < 3) { stage = 1; return; }
-                    if (done is Place) notes.Add(done.Message); // furniture: check_house will say what's still missing
+                    if (done is Place || optional.Contains(done)) notes.Add(done.Message); // check_house says what's still missing
                     else { Fail($"{done.Message} (house site ({x},{y}); call build_house again to resume)"); return; }
                 }
             }
@@ -286,49 +325,54 @@ namespace TerrariaAgentBridge.Skills
             {
                 case 0:
                     if (askX is int ax && askY is int ay) (x, y) = (ax, ay);
-                    else if (lastSite is { } s && Math.Abs(s.x - Game.TileX(p)) < 80) (x, y) = s;
+                    else if (!newHouse && lastSite is { } s && s.w == W && Math.Abs(s.x - Game.TileX(p)) < 80) (x, y) = (s.x, s.y);
                     else if (FindSite(p) is { } f) (x, y) = f;
-                    else { Fail("no flat 10-tile-wide spot within 25 tiles; move to flatter ground or give x, y"); return; }
-                    lastSite = (x, y);
+                    else { Fail($"no flat {W}-tile-wide spot within 30 tiles; move to flatter ground or give x, y"); return; }
+                    lastSite = (x, y, W);
+                    if (!sites.Contains((x, y, W))) sites.Add((x, y, W));
                     return;
 
                 case 1:
                 {
-                    // Furniture first, raw Wood for the frame last, so crafting doesn't eat the frame wood.
-                    var room = new BuildRoom(x, y, W, H, "Wood", "WoodWall", "WoodenDoor");
+                    // Furniture first, raw blocks for the frame last, so crafting doesn't eat the frame material.
+                    var room = new BuildRoom(x, y, W, H, blockName, wallName, "WoodenDoor");
                     var (blocks, walls, door) = room.Requirements();
-                    if (walls > 0) todo.Enqueue(_ => new Obtain(ItemID.WoodWall, walls, 0));
+                    if (walls > 0) todo.Enqueue(_ => new Obtain(wallItem, walls, 0));
                     if (door) todo.Enqueue(_ => new Obtain(ItemID.WoodenDoor, 1, 0));
-                    foreach (var f in Furniture)
+                    foreach (var f in furniture)
                         if (!InRoom(f.tileA, f.tileB)) todo.Enqueue(_ => new Obtain(f.item, 1, 0));
-                    if (blocks > 0) todo.Enqueue(_ => new Obtain(ItemID.Wood, blocks, 0));
+                    if (!InRoom(TileID.Torches, TileID.Torches) && Game.CountItem(p, ItemID.Torch) == 0)
+                        todo.Enqueue(_ => Optional(new Obtain(ItemID.Torch, 1, 0)));
+                    if (blocks > 0) todo.Enqueue(_ => new Obtain(blockItem, blocks, 0));
                     return;
                 }
 
                 case 2:
-                    child = new BuildRoom(x, y, W, H, "Wood", "WoodWall", "WoodenDoor");
+                    child = new BuildRoom(x, y, W, H, blockName, wallName, "WoodenDoor");
                     return;
 
                 case 3:
-                    foreach (var f in Furniture)
+                    foreach (var f in furniture)
                         if (!InRoom(f.tileA, f.tileB))
                             todo.Enqueue(_ => new Place(Game.ItemName(f.item), x + f.dx, y - 1));
                     if (Game.CountItem(p, ItemID.Torch) > 0 && !InRoom(TileID.Torches, TileID.Torches))
-                        todo.Enqueue(_ => new Place("Torch", x + 5, y - 4));
+                        todo.Enqueue(_ => Optional(new Place("Torch", x + W / 2, y - H + 2)));
                     return;
 
                 default:
                 {
-                    var check = new CheckHouse(x + 1, y - 4);
+                    var check = new CheckHouse(x + 2, y - 2);
                     check.Tick(p); // finishes in one tick
-                    string where = $"House at floor row y={y}, walls x {x}..{x + W - 1}.";
-                    string extra = notes.Count > 0 ? " Placement notes: " + string.Join("; ", notes) : "";
-                    if (check.Ok) Succeed($"{check.Message} {where}");
+                    string where = $"House at floor row y={y}, walls x {x}..{x + W - 1}, {blockName}.";
+                    string extra = notes.Count > 0 ? " Notes: " + string.Join("; ", notes) : "";
+                    if (check.Ok) Succeed($"{check.Message} {where}{extra}");
                     else Fail($"{check.Message} {where}{extra}");
                     return;
                 }
             }
         }
+
+        private Skill Optional(Skill s) { optional.Add(s); return s; }
 
         private bool InRoom(int tileA, int tileB)
         {
@@ -341,14 +385,16 @@ namespace TerrariaAgentBridge.Skills
             return false;
         }
 
-        /// <summary>A 10-wide stretch of ground near the player with at most 2 tiles of height difference.</summary>
-        private static (int x, int y)? FindSite(Player p)
+        /// <summary>A W-wide stretch of ground near the player with at most 2 tiles of height difference, not overlapping
+        /// a house already built (a new house prefers to sit right next to the last one).</summary>
+        private (int x, int y)? FindSite(Player p)
         {
             int px = Game.TileX(p), py = Game.TileY(p);
             (int, int)? best = null;
             int bestScore = int.MaxValue;
-            for (int left = px - 25; left <= px + 15; left++)
+            for (int left = px - 30; left <= px + 20; left++)
             {
+                if (sites.Any(st => left < st.x + st.w + 1 && st.x < left + W + 1)) continue;
                 var ground = new int[W];
                 bool ok = true;
                 for (int k = 0; k < W && ok; k++)
@@ -368,6 +414,7 @@ namespace TerrariaAgentBridge.Skills
                     if (Framing.GetTileSafely(i, j).LiquidAmount > 0) blocked += 50;
                 }
                 int score = spread * 6 + blocked * 3 + Math.Abs(left + W / 2 - px);
+                if (newHouse && lastSite is { } ls) score += Math.Abs(left - (ls.x + ls.w + 2)) * 2; // neighbours
                 if (score < bestScore) { bestScore = score; best = (left, floor); }
             }
             return best;
