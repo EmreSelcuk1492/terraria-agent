@@ -29,7 +29,7 @@ from typing import Any
 
 import httpx
 
-from .bridge import BridgeClient, BridgeError
+from .bridge import BridgeClient, BridgeError, exclusive
 from .director import ROOT
 from .skill_library import SkillLibrary
 from .tools import TOOLS
@@ -47,22 +47,41 @@ class Task:
 
 
 TASKS = [
-    Task("wood", "Hold at least 30 Wood.", {"have": {"Wood": 30}}),
-    Task("workbench", "Hold a WorkBench in your inventory.", {"have": {"WorkBench": 1}}),
-    Task("hammer", "Hold a WoodenHammer.", {"have": {"WoodenHammer": 1}}),
+    Task("wood", "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).", {"have": {"Wood": 30}}),
+    Task("workbench", "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).", {"have": {"WorkBench": 1}}),
+    Task("hammer", "Hold a wooden hammer (any wood variant counts).", {"have": {"WoodenHammer": 1}}),
     Task("stone", "Hold at least 30 StoneBlock.", {"have": {"StoneBlock": 30}}),
-    Task("chair_table", "Hold a WoodenChair and a WoodenTable.", {"have": {"WoodenChair": 1, "WoodenTable": 1}}),
-    Task("door", "Hold a WoodenDoor.", {"have": {"WoodenDoor": 1}}),
+    Task("chair_table", "Hold a wooden chair and a wooden table (any wood variant counts).", {"have": {"WoodenChair": 1, "WoodenTable": 1}}),
+    Task("door", "Hold a wooden door (any wood variant counts).", {"have": {"WoodenDoor": 1}}),
     Task("furnace", "Hold a Furnace.", {"have": {"Furnace": 1}}, give={"Torch": 5}),
     Task("copper_bars", "Hold at least 3 CopperBar or 3 TinBar (whichever ore this world has).",
          {"any": [{"have": {"CopperBar": 3}}, {"have": {"TinBar": 3}}]}, give={"Torch": 5}),
 ]
 
 
+# Terraria's recipe groups: "Wood" in a recipe takes any of these. A snow-biome start gives BorealWood, and a check
+# that wanted the item literally named Wood failed a run where the model had done the job (31 BorealWood).
+GROUPS = {"Wood": ("Wood", "BorealWood", "RichMahogany", "Ebonwood", "Shadewood", "PalmWood", "Pearlwood", "AshWood")}
+
+
+# Wood furniture and tools come in one variant per wood ("BorealWoodWorkBench", "BorealWoodHammer"): in a snow
+# start the model rightly crafted those, since a plain WorkBench needs plain Wood. Checks accept any variant.
+WOOD_PREFIXES = ("BorealWood", "RichMahogany", "Ebonwood", "Shadewood", "PalmWood", "Pearlwood", "AshWood")
+WOOD_VARIANTS = ("WorkBench", "WoodenHammer", "WoodenChair", "WoodenTable", "WoodenDoor", "WoodenSword", "WoodenBow")
+
+
+def held(inv: Counter, item: str) -> int:
+    names = set(GROUPS.get(item, (item,)))
+    if item in WOOD_VARIANTS:
+        suffix = item.removeprefix("Wooden")
+        names |= {pre + suffix for pre in WOOD_PREFIXES}
+    return sum(inv[i] for i in names)
+
+
 def verify(check: dict[str, Any], inv: Counter) -> bool:
     if "any" in check:
         return any(verify(c, inv) for c in check["any"])
-    return all(inv[k] >= v for k, v in check.get("have", {}).items())
+    return all(held(inv, k) >= v for k, v in check.get("have", {}).items())
 
 
 PROGRAM_SCHEMA = {
@@ -277,10 +296,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--think", default="low", help="reasoning effort for models that support it ('' to omit)")
     ap.add_argument("--attempts", type=int, default=3)
     ap.add_argument("--only", action="append")
+    ap.add_argument("--library-path", type=Path, help="default skills/library-<mode>.json")
     ap.add_argument("--narrate", action="store_true", help="show the model's reasoning and programs in the in-game chat")
     ap.add_argument("--start-dx", type=int, default=150, help="start this many tiles east of spawn (untouched terrain)")
     a = ap.parse_args(argv)
-    lib_path = ROOT / "skills" / f"library-{a.mode}.json"
+    lock = exclusive(a.bridge)  # noqa: F841 (held for the whole run)
+    lib_path = a.library_path or ROOT / "skills" / f"library-{a.mode}.json"
     if a.library == "fresh" and lib_path.exists():
         lib_path.rename(lib_path.with_suffix(f".{time.strftime('%Y%m%d-%H%M%S')}.json"))  # keep old libraries
     library = None if a.library == "off" else SkillLibrary(lib_path)

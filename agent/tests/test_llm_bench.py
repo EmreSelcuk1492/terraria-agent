@@ -60,3 +60,16 @@ def test_verify_any_of():
     check = {"any": [{"have": {"CopperBar": 3}}, {"have": {"TinBar": 3}}]}
     assert llm_bench.verify(check, Counter({"TinBar": 3}))
     assert not llm_bench.verify(check, Counter({"CopperBar": 2}))
+
+
+def test_wood_check_takes_any_wood():
+    from collections import Counter
+    assert llm_bench.verify({"have": {"Wood": 30}}, Counter({"BorealWood": 31}))
+    assert not llm_bench.verify({"have": {"Wood": 30}}, Counter({"BorealWood": 20}))
+
+
+def test_wood_variants_count():
+    from collections import Counter
+    assert llm_bench.verify({"have": {"WorkBench": 1}}, Counter({"BorealWoodWorkBench": 1}))
+    assert llm_bench.verify({"have": {"WoodenHammer": 1}}, Counter({"BorealWoodHammer": 1}))
+    assert not llm_bench.verify({"have": {"WorkBench": 1}}, Counter({"Furnace": 1}))

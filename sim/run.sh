@@ -14,6 +14,10 @@ if [ "$fresh" = "--fresh" ] || [ ! -d "$inst/save" ]; then
   mod="$home/mods/TerrariaAgentBridge.tmod"; [ -f "$mod" ] || mod="$saves/Mods/TerrariaAgentBridge.tmod"
   cp "$mod" "$inst/save/Mods/"
   printf '["TerrariaAgentBridge"]' > "$inst/save/Mods/enabled.json"   # only the bridge; stray .tmods pop error dialogs
+  if [ -f "$home/mods/TerraBlind.tmod" ]; then                          # optional navigator for tb_nav (scripts/build-terrablind.sh)
+    cp "$home/mods/TerraBlind.tmod" "$inst/save/Mods/"
+    printf '["TerrariaAgentBridge","TerraBlind"]' > "$inst/save/Mods/enabled.json"
+  fi
   cp "$(dirname "$0")/config.json" "$inst/save/config.json"   # language + last-run versions: skips first-run screens
   p="${player// /_}"; w="${world// /_}"
   cp "$saves/Players/$p.plr" "$inst/save/Players/"; cp "$saves/Players/$p.tplr" "$inst/save/Players/" 2>/dev/null || true

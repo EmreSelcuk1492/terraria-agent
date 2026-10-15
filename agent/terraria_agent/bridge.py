@@ -13,6 +13,27 @@ class BridgeError(RuntimeError):
     pass
 
 
+def exclusive(base_url: str):
+    """Hold a per-instance lock for a whole run: two drivers on one game cancel each other's skills ("interrupted by
+    move_to", "scenario reset"), which silently turned an LLM-track run into 0/8. Exits if another run holds it."""
+    import fcntl
+    import os
+    import re
+    import sys
+    from pathlib import Path
+
+    d = Path.home() / ".cache" / "terraria-agent"
+    d.mkdir(parents=True, exist_ok=True)
+    f = open(d / f"{re.sub(r'[^0-9A-Za-z]+', '_', base_url)}.lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit(f"another run is driving {base_url}; stop it first (lock {f.name})")
+    f.write(str(os.getpid()))
+    f.flush()
+    return f  # keep a reference: the lock lives as long as the file object
+
+
 class BridgeClient:
     def __init__(self, base_url: str = DEFAULT_URL, skill_timeout: float = 1800.0):
         # Macro skills (obtain, build_house, mine_vein) run for minutes, longer with guard fights; a shorter read

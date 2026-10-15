@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .bridge import BridgeClient, BridgeError
+from .bridge import BridgeClient, BridgeError, exclusive
 from .director import ROOT, Director
 
 # What the character is busy with when trouble arrives: a long gathering job, like a real plan step.
@@ -290,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
               for k, v in (kv.split("=", 1) for kv in a.set)}
     if not chosen:
         ap.error(f"no scenario named {a.only}; see --list")
+    locks = [exclusive(u) for u in (a.bridge or ["http://127.0.0.1:7979"])]  # noqa: F841
     out = ROOT / "runs" / "scenarios" / time.strftime("%Y%m%d-%H%M%S")
     results = run_suite(a.bridge or ["http://127.0.0.1:7979"], chosen, a.repeat, out, config=config)
     print(f"\n{sum(r.passed for r in results)}/{len(results)} passed. Report: {out / 'report.md'}")
