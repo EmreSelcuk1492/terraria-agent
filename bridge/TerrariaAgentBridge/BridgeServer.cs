@@ -21,6 +21,8 @@ namespace TerrariaAgentBridge
     ///   POST /skill  {name, args}  -> blocks until the skill finishes -> { ok, message, ticks, player, inventory }
     ///   POST /cancel           -> stops the running skill
     ///   POST /config {freeze}  -> freeze the world while no skill is running
+    ///   POST /save             -> save player + world now
+    ///   POST /quit             -> save, exit tModLoader, and load back into this world on the next launch
     /// </summary>
     public static class BridgeServer
     {
@@ -29,6 +31,12 @@ namespace TerrariaAgentBridge
         private static readonly ConcurrentQueue<(Func<object> work, TaskCompletionSource<object> done)> mainThreadQueue = new();
 
         public static volatile bool FreezeWhileThinking;
+        /// <summary>An agent is driving: keep the game running while the window is in the background. Set by
+        /// POST /config {background}; cleared when the world unloads.</summary>
+        public static volatile bool Background;
+        public static bool AgentActive => (Background || SkillRunner.IsRunning) && !Main.gameMenu;
+        /// <summary>Set once Save &amp; Quit has finished; the menu loop then closes the game.</summary>
+        public static volatile bool ExitRequested;
 
         public static void Start()
         {
@@ -130,7 +138,31 @@ namespace TerrariaAgentBridge
             switch (method + " " + path)
             {
                 case "GET /health":
-                    return new Dictionary<string, object> { ["ok"] = true, ["version"] = TerrariaAgentBridge.BridgeVersion, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking };
+                    return new Dictionary<string, object>
+                    {
+                        ["ok"] = true, ["version"] = TerrariaAgentBridge.BridgeVersion, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking,
+                        ["player"] = InWorld ? Main.ActivePlayerFileData?.Name : null, ["world"] = InWorld ? Main.worldName : null,
+                    };
+
+                case "POST /save":
+                    if (!InWorld) return Error("not in a world");
+                    return await OnMainThread(() =>
+                    {
+                        Player.SavePlayer(Main.ActivePlayerFileData);
+                        WorldGen.saveAndPlay(); // world save on a worker thread, like the vanilla autosave
+                        return new Dictionary<string, object> { ["ok"] = true };
+                    });
+
+                case "POST /quit":
+                    if (!InWorld) { ExitRequested = true; return new Dictionary<string, object> { ["ok"] = true, ["saved"] = false }; }
+                    return await OnMainThread(() =>
+                    {
+                        SkillRunner.Cancel("game is quitting");
+                        FreezeWhileThinking = false;
+                        Autoload.Remember(Main.ActivePlayerFileData.Name, Main.worldName);
+                        WorldGen.SaveAndQuit(() => ExitRequested = true);
+                        return new Dictionary<string, object> { ["ok"] = true, ["saved"] = true, ["autoload"] = Main.worldName };
+                    });
 
                 case "GET /state":
                     if (!InWorld) return Error("not in a world");
@@ -141,7 +173,9 @@ namespace TerrariaAgentBridge
                     using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                     if (doc.RootElement.TryGetProperty("freeze", out var freeze))
                         FreezeWhileThinking = freeze.GetBoolean();
-                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking };
+                    if (doc.RootElement.TryGetProperty("background", out var bg))
+                        Background = bg.GetBoolean();
+                    return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background };
                 }
 
                 case "POST /cancel":

@@ -82,6 +82,7 @@ def main() -> int:
         ap.error("--goal is required")
     agent = Agent(bridge, Memory(a.memory), make_backend(a), log_dir=a.logs, max_cost=a.max_cost, until=a.until,
                   freeze=not a.no_freeze)
+    bridge.set_background(True)
     if not a.no_freeze:
         bridge.set_freeze(True)
     try:
@@ -91,6 +92,7 @@ def main() -> int:
         bridge.cancel()
     finally:
         bridge.set_freeze(False)
+        bridge.set_background(False)
         bridge.close()
     return 0
 

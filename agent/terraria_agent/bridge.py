@@ -45,5 +45,9 @@ class BridgeClient:
     def set_freeze(self, on: bool) -> dict[str, Any]:
         return self._post("/config", {"freeze": on})
 
+    def set_background(self, on: bool) -> dict[str, Any]:
+        """Keep the game running while its window is in the background (single player pauses otherwise)."""
+        return self._post("/config", {"background": on})
+
     def close(self) -> None:
         self._http.close()

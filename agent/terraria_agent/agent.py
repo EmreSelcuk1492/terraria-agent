@@ -93,6 +93,7 @@ class Agent:
         while time.time() < end:
             try:
                 if self.bridge.health().get("in_world"):
+                    self.bridge.set_background(True)
                     if self.freeze:
                         self.bridge.set_freeze(True)
                     self._say("back in the world, continuing.")
