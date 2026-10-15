@@ -71,7 +71,7 @@ PROGRAM_SCHEMA = {
         "thought": {"type": "string"},
         "name": {"type": "string"},
         "description": {"type": "string"},
-        "program": {"type": "array", "items": {"type": "object", "properties": {
+        "program": {"type": "array", "minItems": 1, "items": {"type": "object", "properties": {
             "skill": {"type": "string"}, "args": {"type": "object"}}, "required": ["skill", "args"]}},
     },
     "required": ["thought", "name", "description", "program"],
@@ -207,6 +207,10 @@ _SKILLS = {t["name"] for t in TOOLS}
 def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: SkillLibrary | None, mode: str,
              attempts: int, use_library: bool, start: dict[str, Any]) -> TaskResult:
     setup = {**start, "give": task.give} if task.give else start
+    for _ in range(30):  # a death in the previous task: wait out the respawn
+        if not bridge.state().get("player", {}).get("dead"):
+            break
+        time.sleep(1)
     r = bridge._post("/scenario", setup)
     if not r.get("ok"):
         raise BridgeError(r.get("error", "setup failed"))
@@ -236,6 +240,9 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
             return TaskResult(task.name, True, attempt, planner.calls - calls0, round(planner.seconds - secs0, 1),
                               round(ex.game_seconds, 1), ex.skill_calls, ex.used, saved, program, ex.log)
         why = msg if not ok else f"the program finished but the goal check {json.dumps(task.check)} is not met"
+        if not program:
+            why = "the program was empty; write at least one skill call"
+        ex.log.append(f"  -> {why[:300]}")
         messages += [{"role": "assistant", "content": json.dumps(plan)},
                      {"role": "user", "content": f"That did not work: {why}\n\nState now:\n{state_text(st)}\n\nWrite a corrected program."}]
     return TaskResult(task.name, False, attempts, planner.calls - calls0, round(planner.seconds - secs0, 1),
@@ -270,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--think", default="low", help="reasoning effort for models that support it ('' to omit)")
     ap.add_argument("--attempts", type=int, default=3)
     ap.add_argument("--only", action="append")
+    ap.add_argument("--narrate", action="store_true", help="show the model's reasoning and programs in the in-game chat")
     ap.add_argument("--start-dx", type=int, default=150, help="start this many tiles east of spawn (untouched terrain)")
     a = ap.parse_args(argv)
     lib_path = ROOT / "skills" / f"library-{a.mode}.json"
@@ -280,6 +288,20 @@ def main(argv: list[str] | None = None) -> int:
     bridge._post("/config", {"peaceful": True, "god": True, "freeze": True, "guard": True, "background": True})
     start = {"fresh_player": True, "surface_at": a.start_dx, "clear": True, "natural_spawns": False, "time": "noon"}
     planner = OllamaPlanner(a.model, think=a.think)
+    if a.narrate:
+        plan = planner.plan
+
+        def narrated(messages):
+            out = plan(messages)
+            steps = "; ".join(f"{st['skill']} {json.dumps(st.get('args', {}), separators=(',', ':'))}" for st in out.get("program", []))
+            for text in (f"[{a.model}] {out.get('thought', '')}", f"[{a.model}] {out.get('name')}: {steps}"):
+                try:
+                    bridge.say(text[:150])
+                except BridgeError:
+                    pass
+            return out
+
+        planner.plan = narrated
     tasks = [t for t in TASKS if not a.only or t.name in a.only]
     out = ROOT / "runs" / "llm" / f"{time.strftime('%Y%m%d-%H%M%S')}-{a.mode}-{a.library}"
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
@@ -291,6 +313,12 @@ def main(argv: list[str] | None = None) -> int:
         except BridgeError as e:
             r = TaskResult(t.name, False, 0, 0, 0, 0, 0, [], None, [], [], str(e))
         results.append(r)
+        if a.narrate:
+            try:
+                bridge.say(f"Task '{t.name}': {'PASS' if r.passed else 'FAIL'} (verified in game), {r.attempts} attempt(s)"
+                           + (f", saved as lib:{r.saved_as}" if r.saved_as else "") + (f", reused {', '.join(r.used_library)}" if r.used_library else ""))
+            except BridgeError:
+                pass
         print(f"{'PASS' if r.passed else 'FAIL'} {t.name}: attempts {r.attempts}, LLM {r.llm_calls} calls/{r.llm_seconds}s, "
               f"game {r.game_seconds}s, {r.skill_calls} skills, library {r.used_library or '-'}, saved {r.saved_as or '-'} {r.error or ''}",
               flush=True)
