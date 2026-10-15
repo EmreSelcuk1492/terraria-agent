@@ -574,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="gpt-oss:20b")
     ap.add_argument("--quiet-chat", action="store_true", help="don't narrate in the in-game chat")
     a = ap.parse_args(argv)
-    bridge = BridgeClient(a.bridge, skill_timeout=900)
+    bridge = BridgeClient(a.bridge, skill_timeout=1800)  # longer than any skill's in-game timeout (build_house: 1200s)
     Director(bridge, make_advisor(a.advisor, a.model), say_in_game=not a.quiet_chat).run(hours=a.hours)
     return 0
 

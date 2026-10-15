@@ -41,6 +41,9 @@ namespace TerrariaAgentBridge
             string squashed = Squash(name);
             for (int t = 0; t < TileLoader.TileCount; t++)
                 if (Squash(TileName(t)) == squashed) return t;
+            // An item name for a placeable thing ("IronOre", "StoneBlock", "Wood") means the tile it places.
+            int item = ResolveItem(name);
+            if (item > 0 && ContentSamples.ItemsByType.TryGetValue(item, out var sample) && sample.createTile >= 0) return sample.createTile;
             return -1;
         }
 

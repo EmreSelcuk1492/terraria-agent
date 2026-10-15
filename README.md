@@ -49,6 +49,55 @@ cd agent
 .venv/bin/python -m pytest -q                # offline tests, scripted Claude, no API calls
 ```
 
+## The Director: hands-off early game
+
+`python -m terraria_agent.director` plays the first in-game days of a fresh world on its own. A local model is too
+slow and too erratic to drive every step, so the plan is code and the model only advises when something breaks:
+
+1. **19 checked steps**, each tested against the live game state, not assumed: wood → torches → a home near spawn
+   → stone → copper/tin → iron/lead → life crystals → bars + anvil → a stone workshop (furnace + anvil inside) →
+   better pickaxe, broadsword, helmet, greaves, chainmail → raid nearby chests → a house for the Merchant →
+   finish every house to Terraria's own NPC-housing standard → store the loot. Each step has fallbacks (the world has
+   copper *or* tin, iron *or* lead; no crystals in range → tunnel deeper first).
+2. **Rules that always win**: wait out death; drink a potion (one a minute) or retreat home at low health; at night
+   do underground work or stay home; climb back to the surface before surface work.
+3. **Recovery**: a step that fails asks the LLM advisor (`gpt-oss:20b` via Ollama, optional) for one corrective
+   call, then retries; a step that keeps failing (or "succeeds" without meeting its goal) is parked and retried later.
+4. **When the plan is done** it patrols: deeper ore, more life crystals, unlooted chests, better gear.
+5. **Narration** in the in-game chat (`[AI] Step 6/19: Mine copper or tin, ...`), a markdown journal with a final
+   summary, a JSONL log of every call, and a per-world memo (houses, finished steps) in `agent/runs/`.
+
+```bash
+cd agent
+.venv/bin/python -m terraria_agent.director --hours 2             # with the gpt-oss advisor
+.venv/bin/python -m terraria_agent.director --advisor none        # rules only
+```
+
+## Unattended play
+
+- **Keeps running in the background.** Single player normally pauses when its window loses focus (and only
+  reads controls with focus). While an agent drives, the bridge patches that check (`IL_Main.DoUpdate`), so the
+  game keeps playing behind other windows. Without an agent, alt-tab pauses as usual.
+- **Bodyguard.** A hit or an enemy within 6 tiles (with line of sight) no longer ends the running skill: the skill
+  pauses, the guard fights (and quick-heals when low), then the skill resumes. Results say `[guard: killed Zombie]`.
+- **Rebuild without hands.** `POST /quit` saves and exits; the next launch loads straight back into the same world
+  (one-shot `agent-autoload.json`). `scripts/cycle.sh` = quit → rebuild mod → relaunch → wait for the world (~20 s).
+- **Start when the Mac is usable.** A locked screen can't open the game window, so `scripts/autoplay.sh HOURS PLAYER
+  WORLD` waits for the unlock, launches into the world and starts the Director.
+
+## Skills
+
+| Skill | What it does in game |
+|---|---|
+| `move_to`, `mine`, `mine_nearest`, `place`, `craft`, `attack`, `use_item`, `wait` | basics (`mine` tunnels when it can't walk into reach; `attack` falls back to the nearest enemy) |
+| `obtain` | any item end to end: gathers (chops, digs down for buried stone, mines ore veins, fights slimes for gel), crafts every intermediate, finds/places stations |
+| `build_house` | a furnished, lit house: wood or stone, 10–16 × 6–9, extras (Furnace, Chest, Bed, anvils, Sawmill, Loom), Terraria's own NPC-housing check |
+| `build_room`, `check_house` | the frame alone; the inspection alone |
+| `dig_down`, `tunnel_to`, `return_to_surface` | straight down until a tile type is in reach (sidesteps trees/hard ground); a walkable stair tunnel to any spot (stops at lava, torches the way); climb out |
+| `mine_vein` | nearest vein of an ore (or any ore), whole vein, then the next |
+| `collect_life_crystals` | tunnel to Life Crystals, break and use them |
+| `equip_best`, `loot_chests`, `store_items`, `set_spawn` | best armor/accessories/tools; empty nearby chests; stash loot at home; respawn at a bed |
+
 ## Protocol
 
 | Call | Body | Returns |
@@ -57,7 +106,9 @@ cd agent
 | `GET /state` | | `{player, world, inventory, map{origin, legend, rows}, npcs, nearby, craftable_now}` |
 | `POST /skill` | `{name, args}` | blocks until done → `{ok, skill, message, ticks, player, inventory}` |
 | `POST /cancel` | | stops the running skill |
-| `POST /config` | `{freeze: bool}` | freeze world while no skill runs |
+| `POST /config` | `{freeze, background, guard}` | freeze world while no skill runs; keep running unfocused; bodyguard on/off |
+| `POST /say` | `{text}` | a line in the in-game chat |
+| `POST /save`, `POST /quit` | | save now; save, exit, and autoload this world next launch |
 
 Skill args are in `bridge/TerrariaAgentBridge/SkillFactory.cs` and mirrored in `agent/terraria_agent/tools.py`.
 
