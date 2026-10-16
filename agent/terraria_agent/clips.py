@@ -33,7 +33,10 @@ MAX_MB = 45  # the bucket refuses files over 50 MB
 def seconds(f: Path) -> float:
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)],
                          capture_output=True, text=True).stdout.strip()
-    return float(out or 0)
+    try:
+        return float(out or 0)
+    except ValueError:  # "N/A": a clip cut off when its container was removed (2026-10-16)
+        return 0.0
 
 
 def clips_since(t0: float, until: float | None = None, prefix: str = "llm-") -> list[Path]:

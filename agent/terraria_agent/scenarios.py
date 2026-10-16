@@ -92,6 +92,25 @@ NAV = [
 ]
 SCENARIOS += NAV
 
+# Stations away from flat ground: the LLM track's copper_bars (2026-10-16) mined ore in a tunnel, then craft could not
+# place the Furnace there ("no flat 3-tile spot ... could not level one"). One craft call with the Furnace and ore in
+# the bag; pass = 3 CopperBar crafted. The arena ground row is dy=0; the player stands in dy -3..-1.
+_SMELT = {"time": "noon", "give": {"Furnace": 1, "CopperOre": 9, "DirtBlock": 20}}
+STATION = [
+    Scenario("station_flat", "control: place a Furnace on open flat ground and smelt",
+             {**_SMELT}, 60, call=("craft", {"item": "CopperBar", "count": 3}), tags=("station",)),
+    Scenario("station_tunnel3", "a 3-high tunnel: roof right over the head, walls 15 tiles away",
+             {**_SMELT, "build": [_rect(-15, 15, -10, -4, "Stone")]}, 60,
+             call=("craft", {"item": "CopperBar", "count": 3}), tags=("station",)),
+    Scenario("station_tunnel_short", "a 3-high, 5-wide pocket: no 3-wide spot beside you without digging",
+             {**_SMELT, "build": [_rect(-15, 15, -10, -1, "Stone"), _rect(-1, 3, -3, -1, "air")]}, 60,
+             call=("craft", {"item": "CopperBar", "count": 3}), tags=("station",)),
+    Scenario("station_shaft", "the bottom of a 2-wide shaft (how mine_nearest reaches ore below): stone on both sides",
+             {**_SMELT, "build": [_rect(-15, 15, -12, -1, "Stone"), _rect(0, 1, -12, -1, "air")]}, 60,
+             call=("craft", {"item": "CopperBar", "count": 3}), tags=("station",)),
+]
+SCENARIOS += STATION
+
 
 @dataclass
 class Result:

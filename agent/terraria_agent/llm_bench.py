@@ -290,11 +290,20 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
         why = msg if not ok else f"the program finished but the goal check {json.dumps(task.check)} is not met"
         if not program:
             why = "the program was empty; write at least one skill call"
+        elif all(st.get("skill") in IDLE for st in program):
+            # Learned pass, copper_bars (2026-10-16): three attempts of "cannot_smelt_bars: wait 0". Giving up is not
+            # an answer here: every task is possible from its start with the skills listed.
+            why = (f"the program only waits ({', '.join(st.get('skill', '?') for st in program)}) and the goal check is not met. "
+                   "This task is possible from here with the skills listed: write the steps that gather, craft and place what it needs")
         ex.log.append(f"  -> {why[:300]}")
         messages += [{"role": "assistant", "content": json.dumps(plan)},
                      {"role": "user", "content": f"That did not work: {why}\n\nState now:\n{state_text(st)}\n\nWrite a corrected program."}]
     return TaskResult(task.name, False, attempts, planner.calls - calls0, round(planner.seconds - secs0, 1),
                       round(ex.game_seconds, 1), ex.skill_calls, ex.used, None, program, ex.log)
+
+
+# Skills that change nothing in the world: a program of only these is giving up.
+IDLE = {"wait", "observe", "say"}
 
 
 def reset(cmd: str, bridge: BridgeClient, timeout: float = 600) -> None:
