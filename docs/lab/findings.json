@@ -226,7 +226,7 @@
   "finding": "at 35 health with zombies 3 tiles away on both sides, dig_in (about 6 s of digging) died every time; the scenario sat at 1/3",
   "fix": "flee skill (run to the safer side, jump enemies and walls) before digging in",
   "effect": "pending: untested live (runs stopped when the host ran low on memory)",
-  "commit": "pending",
+  "commit": "794c1df",
   "at": "2026-10-15T18:40:00-07:00"
  }
 ]
