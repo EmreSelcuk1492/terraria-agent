@@ -219,7 +219,10 @@ namespace TerrariaAgentBridge.Skills
         {
             bool healthy = p.statLife >= p.statLifeMax2 * untilHp;
             bool dayOk = !untilDay || Main.dayTime;
-            if ((healthy && dayOk) || ++waited >= waitTicks)
+            // Healed but zombies on the roof: the survival suite (2026-10-16) left at 70 hp with two zombies a tile
+            // away, the work step mined out, and it died. Wait them out while the time budget lasts.
+            bool besieged = Flee.Threats(p, 10).Exists(n => !n.noGravity);
+            if ((healthy && dayOk && !besieged) || ++waited >= waitTicks)
             {
                 string seal = phase == 3 && needN > 0
                     ? $"sealed {sealedN}/{needN} open tiles{(sealedN < needN ? " (out of blocks: carry DirtBlock/StoneBlock)" : "")}"
@@ -247,7 +250,7 @@ namespace TerrariaAgentBridge.Skills
 
         public Flee(int distance = 18) { this.distance = Math.Clamp(distance, 6, 60); }
 
-        private static List<NPC> Threats(Player p, float range)
+        internal static List<NPC> Threats(Player p, float range)
         {
             var list = new List<NPC>();
             foreach (NPC n in Main.npc)

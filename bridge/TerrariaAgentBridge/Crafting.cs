@@ -38,15 +38,28 @@ namespace TerrariaAgentBridge
             return made;
         }
 
-        /// <summary>Why each of the first few recipes for `type` can't be crafted here.</summary>
-        public static string Problems(Player p, int type) => string.Join("; ", RecipesFor(type).Take(3).Select(r =>
+        /// <summary>Why each of the first few recipes for `type` can't be crafted here; `wanted` items still to make.</summary>
+        public static string Problems(Player p, int type, int wanted = 1) => string.Join("; ", RecipesFor(type).Take(3).Select(r =>
         {
             var stations = MissingStations(p, r);
             var ingredients = MissingIngredients(p, r);
             return $"recipe [{Describe(r)}]" +
                 (stations.Count > 0 ? $" missing station: {string.Join(", ", stations)}" : "") +
-                (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : "");
+                (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : "") + Totals(p, r, wanted);
         })) + VariantHint(p, type);
+
+        /// <summary>
+        /// The ingredients for all `wanted` items, not one batch. LLM track copper_bars: after 1/3 CopperBar the
+        /// message said "CopperOre 0/3", the model mined 2 more, and failed again (3 bars need 9 ore).
+        /// </summary>
+        public static string Totals(Player p, Recipe r, int wanted)
+        {
+            int batches = (wanted + r.createItem.stack - 1) / r.createItem.stack;
+            if (batches <= 1) return "";
+            var parts = r.requiredItem.Where(i => !i.IsAir)
+                .Select(i => $"{i.stack * batches} {Game.ItemName(i.type)} (have {Accepted(r, i).Sum(t => Game.CountItem(p, t))})");
+            return $"; for {wanted} more {Game.ItemName(r.createItem.type)} you need {string.Join(", ", parts)} in total";
+        }
 
         /// <summary>
         /// The same item in another material the player holds: "WorkBench" with 35 BorealWood -> BorealWoodWorkBench.

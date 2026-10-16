@@ -136,7 +136,7 @@ namespace TerrariaAgentBridge.Skills
             // copper_bars), which only has odd recipes from walls. Nothing to make, but the goal holds.
             int held = Game.CountItem(p, type);
             if (made == 0 && held >= count) { Succeed($"crafted none: you already hold {held} {Game.ItemName(type)}"); return; }
-            string msg = $"crafted {made}/{count} {Game.ItemName(type)}. {Crafting.Problems(p, type)}";
+            string msg = $"crafted {made}/{count} {Game.ItemName(type)}. {Crafting.Problems(p, type, count - made)}";
             if (made > 0) Succeed(msg); else Fail(msg);
         }
     }
