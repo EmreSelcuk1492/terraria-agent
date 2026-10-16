@@ -377,6 +377,12 @@ class Director:
                 for name, args in _go_home(self.memo):
                     self.call(name, args)
             else:
+                # Enemies a few tiles away arrive before a 2x4 hole is dug (two_zombies_low_night died in dig_in every
+                # time): run first, dig in with a head start.
+                close = [n for n in c.hostiles(6) if not n.get("flying")]
+                if close:
+                    self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): running from {close[0]['name']} before digging in.", chat=True)
+                    self.call("flee", {"distance": 18})
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): digging in to recover.", chat=True)
                 self._shelter(c, until_hp=0.7)
             return True

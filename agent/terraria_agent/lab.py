@@ -37,6 +37,7 @@ INVALID = {
     "survival:20261015-140428": "spawn location and the Mac character (before the arena and fresh_player)",
     "nav:20261015-142819": "the detour course was unsolvable (replaced by the tunnel course)",
     "nav:20261015-142919": "the detour course was unsolvable (replaced by the tunnel course)",
+    "llm:20261015-181033": "incomplete: stopped before copper_bars when the host ran low on memory (6/7 run, wood to door all first-attempt)",
     "llm:20261015-174937": "tasks shared forests (patches 120 tiles apart, tree search 180 each way): the fifth task found none; stopped and re-placed",
     "llm:20261015-172952": "the game container was killed mid-run (Docker ran out of memory with four worlds starting at once)",
     "survival:20261015-174409": "one of three game instances crashed and its worker failed 27 jobs as unreachable (fixed: jobs go back to the queue)",

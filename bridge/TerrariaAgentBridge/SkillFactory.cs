@@ -20,6 +20,7 @@ namespace TerrariaAgentBridge
             "place" => new Place(Str(args, "item"), Int(args, "x"), Int(args, "y")),
             "craft" => new Craft(Str(args, "item"), Int(args, "count", 1)),
             "attack" => new Attack(Str(args, "target", "nearest"), Int(args, "max_kills", 1), Bool(args, "desperate", false)),
+            "flee" => new Flee((int)Num(args, "distance", 18)),
             "dig_in" => new DigIn(Num(args, "wait_seconds", 60), Num(args, "until_hp", 0.8), Bool(args, "until_day", false)),
             "use_item" => new UseItem(Str(args, "item")),
             "wait" => new Wait((float)Num(args, "seconds", 1)),

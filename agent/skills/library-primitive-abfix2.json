@@ -18,8 +18,8 @@
    }
   },
   "created": 1792112537.0074592,
-  "uses": 11,
-  "successes": 11
+  "uses": 16,
+  "successes": 16
  },
  {
   "name": "gather_and_craft_workbench",
@@ -44,8 +44,8 @@
    }
   },
   "created": 1792112595.4752798,
-  "uses": 7,
-  "successes": 7
+  "uses": 11,
+  "successes": 11
  },
  {
   "name": "make_wooden_hammer",
@@ -96,8 +96,8 @@
    }
   },
   "created": 1792112695.5692449,
-  "uses": 2,
-  "successes": 1
+  "uses": 3,
+  "successes": 2
  },
  {
   "name": "make_wooden_chair_table",
@@ -137,8 +137,8 @@
    }
   },
   "created": 1792112751.5453172,
-  "uses": 1,
-  "successes": 1
+  "uses": 2,
+  "successes": 2
  },
  {
   "name": "get_and_hold_wooden_hammer",
@@ -160,6 +160,32 @@
    }
   },
   "created": 1792113211.4398441,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "make_wooden_door",
+  "description": "Gather wood, create a WorkBench, and craft one WoodenDoor.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_and_craft_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792113389.014427,
   "uses": 1,
   "successes": 1
  }

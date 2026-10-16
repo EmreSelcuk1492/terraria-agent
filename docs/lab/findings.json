@@ -165,7 +165,7 @@
   "found_by": "LLM track, learned pass",
   "finding": "in a snow start the model asked for a WorkBench three times; craft only said 'Wood 0/10' while it held 35 BorealWood",
   "fix": "craft failures name the same item in a material you hold (BorealWoodWorkBench)",
-  "effect": "pending: A/B rerun",
+  "effect": "workbench passes; on a fresh world per task the fresh pass got 5/8 and the learned pass 6/7, wood to door all on the first attempt",
   "commit": "6284810",
   "at": "2026-10-15T18:00:00-07:00"
  },
@@ -175,7 +175,7 @@
   "found_by": "LLM track, library reuse",
   "finding": "a reused library skill aborted a furnace program for being 3 stone short of the check from the task it was learned on (the furnace needs 20, it had 27)",
   "fix": "a reused skill's old check is a note; the task's own check decides",
-  "effect": "pending: A/B rerun",
+  "effect": "reused skills chain: hammer reused three saved skills in one program",
   "commit": "6284810",
   "at": "2026-10-15T18:02:00-07:00"
  },
@@ -186,7 +186,7 @@
   "finding": "fast-forward made fights harder: with the world running between calls, every second the agent spends deciding costs 4 seconds of game, and the flier scenario fell from 3/3 at 1x to 1/3 at 4x",
   "fix": "survival suites run headless at 1x; fast-forward only where the world freezes while the agent thinks (LLM and build tracks)",
   "effect": "headless 1x survival suite 16/18, the best so far (15/18 rendered)",
-  "commit": "pending",
+  "commit": "01c0209",
   "at": "2026-10-15T18:20:00-07:00"
  },
  {
@@ -195,8 +195,38 @@
   "found_by": "LLM track, fixed rerun",
   "finding": "task patches 120 tiles apart while tree search reaches 180 each way, and the model cut 30 trees a call: the fifth task found no tree in reach",
   "fix": "a fresh copy of the world before every task, each starting at the same patch with at least 10 trees",
-  "effect": "pending: A/B rerun",
-  "commit": "pending",
+  "effect": "chair_table, which failed in every earlier run, passed first try in both passes",
+  "commit": "01c0209",
   "at": "2026-10-15T18:15:00-07:00"
+ },
+ {
+  "id": 21,
+  "area": "Building",
+  "found_by": "LLM track, door task",
+  "finding": "on a steep hillside no flat 3-tile floor was in reach, so the work bench could not be placed anywhere the character walked",
+  "fix": "level a spot: mine a 3x3 space beside you, put a block under any open floor column, then place",
+  "effect": "both failing hillside spots now craft the door",
+  "commit": "ce43789",
+  "at": "2026-10-15T18:25:00-07:00"
+ },
+ {
+  "id": 22,
+  "area": "Mining",
+  "found_by": "LLM track, furnace and copper tasks",
+  "finding": "a tunnel stopped at grass with a tree on it ('did not break: something on top'); Terraria won't break a block under a tree",
+  "fix": "fell the tree or cut the plant on top first, then break the block",
+  "effect": "the same tunnel digs through (15 tiles)",
+  "commit": "ce43789",
+  "at": "2026-10-15T18:30:00-07:00"
+ },
+ {
+  "id": 23,
+  "area": "Survival",
+  "found_by": "Survival suite, two_zombies_low_night",
+  "finding": "at 35 health with zombies 3 tiles away on both sides, dig_in (about 6 s of digging) died every time; the scenario sat at 1/3",
+  "fix": "flee skill (run to the safer side, jump enemies and walls) before digging in",
+  "effect": "pending: untested live (runs stopped when the host ran low on memory)",
+  "commit": "pending",
+  "at": "2026-10-15T18:40:00-07:00"
  }
 ]

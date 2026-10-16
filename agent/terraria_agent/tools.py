@@ -102,6 +102,12 @@ TOOLS: list[dict[str, Any]] = [
         {"wait_seconds": {"type": "number"}, "until_hp": {"type": "number"}, "until_day": {"type": "boolean"}},
     ),
     _tool(
+        "flee",
+        "Run from enemies toward the safer side, jumping walls and enemies in the way, until nothing hostile is within "
+        "`distance` tiles (default 18). Works at low health. Use it when enemies are close and digging in would take too long.",
+        {"distance": {"type": "integer"}},
+    ),
+    _tool(
         "use_item",
         "Use one item: drink a potion, eat food, use a summon item, etc.",
         {"item": _STR},
@@ -199,7 +205,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 SKILL_TOOLS = {"move_to", "tb_nav", "mine", "mine_nearest", "dig_down", "place", "obtain", "craft", "attack", "use_item", "wait", "build_room",
-               "build_house", "check_house", "tunnel_to", "dig_in", "mine_vein", "collect_life_crystals", "return_to_surface",
+               "build_house", "check_house", "tunnel_to", "dig_in", "flee", "mine_vein", "collect_life_crystals", "return_to_surface",
                "equip_best", "loot_chests", "store_items", "set_spawn"}
 
 

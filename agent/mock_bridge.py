@@ -427,6 +427,16 @@ class World:
         self.player["hp"] = max(self.player["hp"], int(self.player["max_hp"] * until_hp))
         return True, f"dug in at ({x},{y + 4}), sealed 2/2 open tiles; hp regenerated. Roof at ({x}, {y + 1}) ({x + 1}, {y + 1}): mine it to get out.", int(wait_seconds * 60)
 
+    def s_flee(self, distance: int = 18):
+        """Run away from the nearest hostile until none is within `distance` (no physics)."""
+        near = [n for n in self.npcs if n.get("hostile") and abs(n["x"] - self.player["x"]) <= distance]
+        if not near:
+            return True, f"got away: nothing hostile within {distance} tiles (ran 0 tiles)", 1
+        side = -1 if sum(n["x"] - self.player["x"] for n in near) > 0 else 1
+        far = max(abs(n["x"] - self.player["x"]) for n in near)
+        self.player["x"] += side * (distance + far + 1)
+        return True, f"got away: nothing hostile within {distance} tiles (ran {distance + far + 1} tiles)", 60 * 6
+
     def scenario(self, b: dict[str, Any]) -> dict[str, Any]:
         """Mock of the mod's POST /scenario: health, time, enemies at offsets (no physics)."""
         if b.get("clear", True):

@@ -230,4 +230,56 @@ namespace TerrariaAgentBridge.Skills
             }
         }
     }
+    /// <summary>
+    /// Run from enemies: toward the side with fewer and farther threats, jumping walls and any enemy in the way, until
+    /// nothing hostile is within `distance` tiles. At 35 health with zombies three tiles away on both sides, dig_in
+    /// (about 6 s of digging) died every time; the player runs about twice as fast as a zombie and jumps higher.
+    /// </summary>
+    public class Flee : Skill
+    {
+        public override string Name => "flee";
+        public override bool Survival => true;
+        public override bool InterruptOnDamage => false;
+        public override int TimeoutTicks => 60 * 25;
+
+        private readonly int distance;
+        private int dir, startX, jumpHold, bestX, stall;
+
+        public Flee(int distance = 18) { this.distance = Math.Clamp(distance, 6, 60); }
+
+        private static List<NPC> Threats(Player p, float range)
+        {
+            var list = new List<NPC>();
+            foreach (NPC n in Main.npc)
+                if (n.active && !n.friendly && !n.townNPC && n.damage > 0 && n.lifeMax > 5 && (n.Center - p.Center).Length() / 16f <= range)
+                    list.Add(n);
+            return list;
+        }
+
+        public override void Tick(Player p)
+        {
+            var near = Threats(p, distance);
+            if (near.Count == 0) { Succeed($"got away: nothing hostile within {distance} tiles (ran {Math.Abs(Game.TileX(p) - startX)} tiles)"); return; }
+            if (dir == 0)
+            {
+                // Danger on each side: closer enemies count more. Ties go away from the nearest one.
+                float Score(int side) { float s = 0; foreach (var n in near) if (Math.Sign(n.Center.X - p.Center.X) == side) s += 1f / Math.Max(1f, Math.Abs(n.Center.X - p.Center.X) / 16f); return s; }
+                float l = Score(-1), r = Score(1);
+                NPC first = near[0];
+                foreach (var n in near) if ((n.Center - p.Center).LengthSquared() < (first.Center - p.Center).LengthSquared()) first = n;
+                dir = Math.Abs(l - r) > 0.05f ? (l < r ? -1 : 1) : (first.Center.X > p.Center.X ? -1 : 1);
+                startX = bestX = Game.TileX(p);
+            }
+            int px = Game.TileX(p), feet = Explore.Feet(p);
+            if ((px - bestX) * dir > 0) { bestX = px; stall = 0; } else if (++stall > 120) { Fail($"cornered at ({px},{feet}): can't run further {(dir > 0 ? "east" : "west")}. Fight (attack desperate=true) or dig_in."); return; }
+            if (Game.Lava(px + dir, feet - 1) || Game.Lava(px + dir * 2, feet - 1)) { Fail($"lava ahead at column {px + dir * 2}; stopped running"); return; }
+
+            if (dir < 0) p.controlLeft = true; else p.controlRight = true;
+            bool onGround = Math.Abs(p.velocity.Y) < 0.01f;
+            bool wall = Game.Solid(px + dir, feet - 1) || Game.Solid(px + dir, feet - 2);
+            bool blocker = near.Exists(n => !n.noGravity && Math.Sign(n.Center.X - p.Center.X) == dir && Math.Abs(n.Center.X - p.Center.X) / 16f < 3.5f);
+            if (jumpHold > 0) { p.controlJump = true; jumpHold--; }
+            else if (onGround && (wall || blocker)) { p.controlJump = true; jumpHold = 20; }
+        }
+    }
 }
