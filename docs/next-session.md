@@ -1,5 +1,39 @@
 # Next testing session
 
+## Overnight 2026-10-16 (01:00-06:55, unattended)
+
+Queue: `sim/night.sh` -> `night-b.sh` -> `night-c.sh` -> `night-d.sh` (logs in `~/Library/Caches/terraria-sim/night/`).
+Builds: `mods-night` (HEAD aa107e8^), `mods-night3` (craft totals, flee 40, besieged wait), `mods-night4` (+ station
+levelling, mine lands before reach; latest, commit cd6da7d). Findings 24-27 in `docs/lab/findings.json`.
+
+| Track | Tonight | Before | Notes |
+|---|---|---|---|
+| Survival (1x, x3) | 14/18 -> 15/18 -> **16/18** | 16/18 | two_zombies_low_night 0/3 -> 3/3 -> 2/3 after flee 40 + besieged wait |
+| Nav | 4/4 (x1) | 12/12 | on mods-night4: the mine change didn't break it |
+| Station (new, x3) | 9/12 -> **12/12** | - | shaft 0/3 -> 3/3 |
+| LLM fresh / learned | 7/8 / 7/8 in all four A/Bs (night1-4) | 6/8 / 7/8 (rec1) | only copper_bars fails: 0/8 tonight |
+| Director 19-step (sim, 1 h, survival on) | **10/19**, 26 deaths | 7/19 | journal `agent/runs/director-night/` |
+
+copper_bars failed a different way every pass: ore count read as bar count (3 ore for 3 bars, even with the new
+"you need 6 in total" hint), the Furnace not placeable in a shaft (fixed), giving up with `wait 0` (now rejected),
+a retry re-running the wood skill in a cut forest (180 s timeout), and invented coordinates into a wall. The
+harness blockers are fixed; what's left is the model's plan. Options: a recipe tool that returns the full ingredient
+tree for N items, or let `craft` of a bar call `obtain` for missing ore.
+
+### Open (not fixed, not in findings.json)
+
+- Gathering: a retry calls the wood library skill again in a forest the first attempt cut ->
+  `mine_nearest Trees x30 timed out after 180s` (3 passes). Stop early when nothing is reachable, or ask for the shortfall.
+- Director: respawn death spiral at night (~10 deaths in the first 5 min, back at the house site at 25-35 hp into the
+  same zombies). Shelter after a night respawn before resuming a step. build_room timed out repeatedly; the stone
+  workshop found no flat 16-wide spot.
+- Survival: single deaths outside the target scenario move the suite +-2 between runs (zombie_half_hp, demon_eye,
+  low_hp_alone died once each in one suite; low_hp_alone died inside dig_in with no hostile logged). Record
+  survival suites (REC=1 TA_RENDER=1) to see them.
+- Harness: the arena keeps earlier builds; each repeat of the station suite starts ~20 rows higher.
+
+## Earlier: state as of 2026-10-15 evening
+
 State as of 2026-10-15 evening. Branch `bg-explore` (from `docker-sim`), clone at `~/Documents/GitHub/terraria-agent-bg`
 (the career repo's hook blocks git worktrees, so this is a separate clone of the same GitHub repo). Not merged.
 

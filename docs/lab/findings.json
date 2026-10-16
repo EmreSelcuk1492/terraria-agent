@@ -228,5 +228,45 @@
   "effect": "first live run (Mac showcase): flee escaped, 25 tiles, nothing within 18; then the zombies caught up during the 6 s dig_in and it died. Next: run further before digging",
   "commit": "794c1df",
   "at": "2026-10-15T18:40:00-07:00"
+ },
+ {
+  "id": 24,
+  "area": "Survival",
+  "found_by": "Survival suite, two_zombies_low_night (overnight 2026-10-16)",
+  "finding": "flee stopped at 18 tiles clear; a zombie walks ~5 tiles/s and dig_in takes ~7 s, so they reached the hole mid-dig (0/3, same as the Mac showcase). Once a bunker healed to its target, the work step mined out with zombies still on the roof",
+  "fix": "flee until 40 tiles clear; dig_in keeps waiting while a ground enemy is within 10 tiles (inside its time budget)",
+  "effect": "two_zombies_low_night 0/3 -> 3/3, then 2/3 on the next build (5/6); whole suite 14/18 -> 15/18 -> 16/18",
+  "commit": "aa107e8",
+  "at": "2026-10-16T04:10:00-07:00"
+ },
+ {
+  "id": 25,
+  "area": "Crafting",
+  "found_by": "LLM track, copper_bars (0 of 4 passes across rec1 + night1)",
+  "finding": "craft reported ingredients for one batch ('CopperOre 0/3') after making 1 of 3 bars, so nothing said 9 ore were needed",
+  "fix": "craft failures add the total for the remaining count ('for 2 more CopperBar you need 6 CopperOre (have 1) in total')",
+  "effect": "the hint shows up in the night3 log, and gpt-oss still mined 2. It keeps reading the ore count as a bar count: wording alone doesn't fix copper_bars",
+  "commit": "aa107e8",
+  "at": "2026-10-16T05:45:00-07:00"
+ },
+ {
+  "id": 26,
+  "area": "Benchmark",
+  "found_by": "LLM track, learned pass, copper_bars (night2)",
+  "finding": "the model gave up: three attempts of 'cannot_smelt_bars: wait 0', which the bench scored like any other failed program",
+  "fix": "a program of only wait/observe/say is answered with 'this task is possible from here: write the steps'",
+  "effect": "no give-up programs in the night3 or night4 passes",
+  "commit": "2365f0a",
+  "at": "2026-10-16T04:15:00-07:00"
+ },
+ {
+  "id": 27,
+  "area": "Building",
+  "found_by": "LLM track copper_bars (night2), reproduced by the new station suite",
+  "finding": "no Furnace could go down at the bottom of a 2-wide shaft. Three bugs stacked: levelling started 2 columns out (the column beside you is the wall), it first walked toward flat ground up the shaft and levelled mid-jump 25 rows up, and every pickup hop made the next mine check reach in mid-air",
+  "fix": "level the 3 columns right past the body edge, bottom-up, from the floor, without walking first when boxed in; mine waits up to 1 s to land before judging reach",
+  "effect": "station suite 9/12 -> 12/12 (shaft 0/3 -> 3/3); nav 4/4 and survival 16/18 on the same build",
+  "commit": "cd6da7d",
+  "at": "2026-10-16T04:55:00-07:00"
  }
 ]
