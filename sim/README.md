@@ -60,3 +60,11 @@ Headless: about 1.5 cores per world at 1x, and ~1.8 GB once a world is loaded (r
 costs CPU). With Docker at 8 GB that is **3 worlds at once**: a fourth got OOM-killed twice on 2026-10-15, once taking
 a benchmark world down with it. `sim/run.sh` caps each world at 3.5 GB (`SIM_MEM`) and `sim/scenarios.sh` staggers
 starts by 25 s (`STAGGER`). Rendered: about 5 cores and 2 GB per world.
+
+## Recordings
+
+`REC=1 TA_RENDER=1` records the game screen (ffmpeg x11grab, the 800x720 game window) from the moment a world is
+loaded until its container stops, into `~/Library/Caches/terraria-sim/recordings/<name>-<HHMMSS UTC>.mp4`. The LLM
+A/B gives every task its own container, so `sim/llm_ab.sh` with REC=1 links one clip per task on the lab when it
+finishes (`python -m terraria_agent.clips llm <run dir>`; public bucket `lab-clips`). Rendering costs speed, so
+record LLM runs (`--speed 4`, no `--headless`) and keep survival suites headless at 1x.

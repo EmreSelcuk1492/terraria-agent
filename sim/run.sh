@@ -25,12 +25,15 @@ if [ "$fresh" = "--fresh" ] || [ ! -d "$inst/save" ]; then
   cp "$saves/Players/$p.plr" "$inst/save/Players/"; cp "$saves/Players/$p.tplr" "$inst/save/Players/" 2>/dev/null || true
   cp "$saves/Worlds/$w.wld" "$inst/save/Worlds/"; cp "$saves/Worlds/$w.twld" "$inst/save/Worlds/" 2>/dev/null || true
 fi
+docker exec "tsim-$name" pkill -INT ffmpeg >/dev/null 2>&1 && sleep 2   # let a recording finish its file
 docker rm -f "tsim-$name" >/dev/null 2>&1 || true
+mkdir -p "${REC_DIR:-$home/recordings}"   # REC=1 (with TA_RENDER=1) records the screen there, one clip per container
 # TA_RENDER=1000 (default): draw 1 frame in 1000 once in a world. Software rendering is what held the game at ~21
 # ticks/s and ~2 GB; headless runs at 60 with ~0.5 GB. TA_RENDER=1 to watch screenshots. A memory cap per world means
 # a runaway world dies alone (four worlds starting at once took down a benchmark world, 2026-10-15); loading a world peaks above 2.5 GB.
 docker run -d --platform linux/amd64 --name "tsim-$name" -p "127.0.0.1:$port:8979" --memory "${SIM_MEM:-3500m}" \
   -e PLAYER="$player" -e WORLD="$world" -e TA_RENDER="${TA_RENDER:-1000}" \
+  -e REC="${REC:-}" -e REC_NAME="$name" -v "${REC_DIR:-$home/recordings}":/rec \
   -v "$home/tModLoader":/game/tModLoader -v "$inst/logs":/game/tModLoader/tModLoader-Logs \
   -v "$home/gog/data/noarch/game":/game/Terraria:ro -v "$inst/save":/root/.local/share/Terraria/tModLoader \
   terraria-sim >/dev/null

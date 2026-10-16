@@ -16,5 +16,14 @@ fi
 (until curl -s -m 2 http://127.0.0.1:7979/health >/dev/null; do
    sleep 5; xdotool mousemove 475 627 mousedown 1; sleep 0.6; xdotool mouseup 1
  done) &
+# REC=1: record the screen once the world is loaded, until the container stops (sim/README "Recordings").
+# Fragmented mp4, so a clip cut off by `docker rm -f` still plays.
+if [ -n "${REC:-}" ]; then
+  (until curl -s -m 2 http://127.0.0.1:7979/health | grep -q '"in_world":true'; do sleep 2; done
+   # the game window is 800x720, centered on the 1280x720 screen
+   exec ffmpeg -loglevel error -f x11grab -framerate 20 -video_size "${REC_SIZE:-800x720}" -i ":99+${REC_AT:-240,0}" \
+     -c:v libx264 -preset veryfast -crf 28 -g 40 -pix_fmt yuv420p -movflags +frag_keyframe+empty_moov+default_base_moof \
+     "/rec/${REC_NAME:-clip}-$(date +%H%M%S).mp4") &
+fi
 cd /game/tModLoader
 exec dotnet tModLoader.dll ${TML_ARGS:-}

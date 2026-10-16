@@ -183,8 +183,11 @@ def publish(runs: list[tuple[dict, list[dict]]], with_notes: bool = False) -> in
     lab.upsert("lab_projects", [project_row()], "slug")
     for run, results in runs:
         lab.upsert("lab_runs", [run], "id")
+        # recordings are linked separately (clips.py); a republish keeps them on the attempts that still exist
+        kept = {(m["item"], m["attempt"]): m["media"] for m in lab.http.get("/lab_results", params={
+            "run_id": f"eq.{run['id']}", "media": "not.is.null", "select": "item,attempt,media"}).json()}
         lab.delete_results(run["id"])
-        lab.upsert("lab_results", results, "run_id,item,attempt")
+        lab.upsert("lab_results", [{**r, "media": kept.get((r["item"], r["attempt"]))} for r in results], "run_id,item,attempt")
     if with_notes:
         lab.upsert("lab_notes", notes(), "project,slug")
     return len(runs)
