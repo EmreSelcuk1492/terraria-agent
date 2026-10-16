@@ -23,6 +23,7 @@ namespace TerrariaAgentBridge.Skills
         private int toolSlot = -1;
         private int swingTicks, swingTicksNeeded;
         private Skill approach, collect;
+        private int airWait;
         private string broke;
         private readonly bool canTunnel;
 
@@ -60,6 +61,9 @@ namespace TerrariaAgentBridge.Skills
 
             if (!Game.InReach(p, x, y, p.inventory[toolSlot].tileBoost))
             {
+                // Mid-jump (picking up the last drop hops you in a narrow shaft) the floor is briefly out of reach: land
+                // before walking anywhere. station_shaft failed every mine this way, 4 rows up in the air (2026-10-16).
+                if (approach == null && Math.Abs(p.velocity.Y) > 0.1f && airWait++ < 60) return;
                 approach ??= new MoveTo(x, y, 2);
                 if (Step(approach, p)) return;
                 if (!Game.InReach(p, x, y, p.inventory[toolSlot].tileBoost))

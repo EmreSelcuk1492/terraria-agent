@@ -23,11 +23,12 @@ namespace TerrariaAgentBridge.Skills
         private readonly bool gather;
         private Skill child;
         private bool walked;
-        private int steps, placeTries;
+        private int steps, placeTries, still, settle;
 
         private bool leveled;
         private readonly Queue<Skill> todo = new();
         private readonly HashSet<Skill> leveling = new();
+        private readonly List<string> levelLog = new();
 
         /// <summary>
         /// Clear a 3x3 space beside the player (toward the side with less to dig) and fill the floor under it, using
@@ -36,21 +37,32 @@ namespace TerrariaAgentBridge.Skills
         private List<Skill> Level(Player p)
         {
             int px = Game.TileX(p), feet = Game.TileY(p) + 1;
-            int Dig(int d) { int n = 0; for (int k = 2; k <= 4; k++) for (int y = feet - 2; y <= feet; y++) if (Game.Solid(px + d * k, y)) n++; return n; }
+            // From the floor, not the body: mid-jump in a 2-wide shaft (station_shaft, 2026-10-16) it cut the hole 6 rows
+            // up the wall, and the Furnace never fit.
+            for (int k = 0; k < 20 && !Game.Solid(px, feet + 1); k++) feet++;
+            // The three columns right past the body's edge. Starting two columns out assumed the column beside you was
+            // open: at the bottom of a 2-wide shaft it is the wall, every mine behind it was out of reach (station_shaft).
+            int Edge(int d) => d > 0 ? Explore.RightCol(p) + 1 : Explore.LeftCol(p) - 1;
+            int Dig(int d) { int n = 0; for (int k = 0; k < 3; k++) for (int y = feet - 2; y <= feet; y++) if (Game.Solid(Edge(d) + d * k, y)) n++; return n; }
             int dir = Dig(1) <= Dig(-1) ? 1 : -1;
             int block = Game.FindSlot(p, i => i.createTile >= 0 && Main.tileSolid[i.createTile] && !Main.tileSolidTop[i.createTile]
                                                 && !Main.tileFrameImportant[i.createTile] && i.stack > 0);
             var steps = new List<Skill>();
-            for (int k = 2; k <= 4; k++)
+            for (int k = 0; k < 3; k++)
             {
-                int x = px + dir * k;
-                for (int y = feet - 2; y <= feet; y++)
+                int x = Edge(dir) + dir * k;
+                // Bottom up: a head-high pocket first and picking up its drop jumped the player up into it, and the
+                // rest of the column was then out of reach (station_shaft).
+                for (int y = feet; y >= feet - 2; y--)
                     if (Game.Solid(x, y)) steps.Add(new Mine(x, y, tunnel: false));
                 if (!Game.Solid(x, feet + 1) && block >= 0) steps.Add(new Place(Game.ItemName(p.inventory[block].type), x, feet + 1));
             }
             foreach (var s in steps) leveling.Add(s);
             return steps;
         }
+
+        private static bool FarFrom(Player p, (int x, int y) spot) =>
+            Math.Abs(spot.y - Game.TileY(p)) > 2 || Math.Abs(spot.x - Game.TileX(p)) > 12;
 
         public EnsureStation(int tileType, bool gather, int depth = 0) { this.tileType = tileType; this.gather = gather; this.depth = depth; }
 
@@ -60,6 +72,7 @@ namespace TerrariaAgentBridge.Skills
             {
                 if (Step(child, p)) return;
                 if (!child.Ok && child is not MoveTo && !leveling.Contains(child)) { Fail(child.Message); return; }
+                if (leveling.Contains(child) && !child.Ok) levelLog.Add($"@({Game.TileX(p)},{Game.TileY(p)}) " + (child.Message.Length > 90 ? child.Message.Substring(0, 90) : child.Message));
                 child = null;
                 if (todo.Count > 0) { child = todo.Dequeue(); return; }
             }
@@ -79,6 +92,12 @@ namespace TerrariaAgentBridge.Skills
             if (slot >= 0)
             {
                 if (PlaceNear(p, slot)) return; // adjTile is checked next tick
+                if (placeTries == 0 && !leveled && (FlatSpot(p) is not { } f0 || FarFrom(p, f0)))
+                {
+                    // Boxed in (a shaft, a tunnel end): the nearest flat stretch is up a wall, and walking there pillars you
+                    // into the air (station_shaft levelled mid-jump 25 rows up). Level right here instead.
+                    placeTries = 3;
+                }
                 if (placeTries < 3)
                 {
                     // Uneven ground or furniture all around: walk to the nearest flat stretch (the LLM track's chair_table
@@ -91,14 +110,16 @@ namespace TerrariaAgentBridge.Skills
                 }
                 if (!leveled)
                 {
+                    if (!Explore.Settled(p, ref still) && settle++ < 120) { steps--; return; } // land first: dig from the floor
                     // No flat ground in reach (a steep hillside, LLM track door task): level a spot beside you the way a
                     // player would, then try again.
                     leveled = true;
                     foreach (var sk in Level(p)) todo.Enqueue(sk);
+                    levelLog.Insert(0, $"levelled from ({Game.TileX(p)},{Game.TileY(p)}) vel {p.velocity.Y:0.0}: {todo.Count} steps");
                     placeTries = 2;
                     if (todo.Count > 0) { child = todo.Dequeue(); return; }
                 }
-                Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it, and could not level one; move to flat ground");
+                Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it, and could not level one ({string.Join("; ", levelLog)}); move to flat ground");
                 return;
             }
 
