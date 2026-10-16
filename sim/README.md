@@ -26,6 +26,24 @@ real saves. Logs: `instances/<name>/logs/client.log`. Screenshot of the virtual 
 
 Stop: `docker rm -f tsim-w1`.
 
+## Speed
+
+Worlds start headless (`TA_RENDER=1000`: the game draws 1 frame in 1000 once a world is loaded; menus still draw).
+Software rendering was what held the game at ~21 ticks/s; headless it runs at the normal 60 with ~0.5 GB instead of
+~2 GB. Fast-forward on top: `/config {"speed": k}` runs k game ticks per frame (about 8-10x real time at k=8).
+
+    sim/scenarios.sh 3 --repeat 3 --tag survival --speed 4
+    sim/llm_ab.sh primitive --headless --speed 4
+
+Time limits and timings are game time (the bridge's tick counter, `/health` `tick`), so a result means the same at any
+speed. Fights are the exception: the world runs while the agent decides, so at 4x each second of thinking is 4
+seconds of game (flier scenario 3/3 at 1x, 1/3 at 4x). Survival suites run at 1x; fast-forward the tracks that freeze
+the world while the agent thinks. Check: the same 7-tree task took 1639 ticks and ended on the same tile at 1x and 4x (78 s vs 3.5 s of wall clock).
+`TA_RENDER=1 sim/run.sh ...` for a world you want screenshots of.
+
+A sim-only bridge build: `scripts/build-sim-mod.sh <out.tmod>` then `SIM_MOD=<out.tmod> sim/run.sh ...`, so new code can
+run next to a benchmark that keeps its own build.
+
 ## Gotchas found on the way
 
 - Linux arm64 can't use the GOG check (tModLoader skips its setup there), hence amd64 + Rosetta.
@@ -38,5 +56,7 @@ Stop: `docker rm -f tsim-w1`.
 
 ## Cost
 
-About 5 CPU cores and 1.5 GB RAM per world (software rendering under Rosetta): 2-3 worlds at once on an M4 Pro
-with Docker at 8 GB.
+Headless: about 1.5 cores per world at 1x, and ~1.8 GB once a world is loaded (rendering adds little memory; it
+costs CPU). With Docker at 8 GB that is **3 worlds at once**: a fourth got OOM-killed twice on 2026-10-15, once taking
+a benchmark world down with it. `sim/run.sh` caps each world at 3.5 GB (`SIM_MEM`) and `sim/scenarios.sh` staggers
+starts by 25 s (`STAGGER`). Rendered: about 5 cores and 2 GB per world.

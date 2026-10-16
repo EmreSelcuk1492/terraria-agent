@@ -13,6 +13,7 @@ for i in $(seq 1 "$n"); do
   port=$((18978 + i))
   "$here/sim/run.sh" "s$i" "$port" "$player" "$world" --fresh > "/tmp/tsim-s$i.start.log" 2>&1 &
   pids+=($!); bridges+=(--bridge "http://127.0.0.1:$port")
+  [ "$i" -lt "$n" ] && sleep "${STAGGER:-25}"   # world loads peak in memory; don't stack them
 done
 for i in "${!pids[@]}"; do
   wait "${pids[$i]}" || { echo "world s$((i + 1)) did not start: $(tail -2 /tmp/tsim-s$((i + 1)).start.log)" >&2; exit 1; }

@@ -118,5 +118,85 @@
   "effect": "the A/B restarted on verified ground",
   "commit": "5bec4f2",
   "at": "2026-10-15T15:10:00-07:00"
+ },
+ {
+  "id": 13,
+  "area": "Benchmark",
+  "found_by": "LLM track A/B",
+  "finding": "one furnace attempt ran 6918 s of wall clock inside a 180 s skill budget: timeouts count game ticks, and the sim was running far below 60 ticks/s",
+  "fix": "a wall-clock budget next to the tick budget; every result reports ticks, wall seconds and tick rate",
+  "effect": "a slow game can no longer hide a stuck skill",
+  "commit": "6284810",
+  "at": "2026-10-15T17:40:00-07:00"
+ },
+ {
+  "id": 14,
+  "area": "Mining",
+  "found_by": "LLM track A/B, furnace task",
+  "finding": "mine_nearest tried ~100 trees one by one behind the same Ebonstone wall it could not dig",
+  "fix": "targets past a blocked way are skipped; five unreachable in a row stops with the reason",
+  "effect": "the same spot fails in 2-4 s with 'Ebonstone needs 65% pickaxe power' instead of hours",
+  "commit": "6284810",
+  "at": "2026-10-15T17:50:00-07:00"
+ },
+ {
+  "id": 15,
+  "area": "Benchmark",
+  "found_by": "Profiling the slow run",
+  "finding": "the containers spent their CPU drawing frames nobody sees: ~21 ticks/s with the agent's own code at 0.4 s of CPU per 78 s skill",
+  "fix": "headless mode (draw 1 frame in 1000) and fast-forward (k game ticks per frame); time limits and timings moved to the game's tick clock",
+  "effect": "60 ticks/s headless, ~500 at speed 8; the same 7-tree task takes the same 1639 ticks and ends on the same tile at 1x and 4x, in 3.5 s instead of 78 s",
+  "commit": "6284810",
+  "at": "2026-10-15T18:05:00-07:00"
+ },
+ {
+  "id": 16,
+  "area": "Benchmark",
+  "found_by": "Survival suite, first headless run",
+  "finding": "one of three game instances crashed and its worker failed 27 jobs in a second as unreachable, which published a 3/30 suite",
+  "fix": "jobs go back to the queue when an instance dies; runs with harness errors are flagged invalid automatically; a memory cap per world",
+  "effect": "a crash costs time, not a wrong number on the page",
+  "commit": "6284810",
+  "at": "2026-10-15T17:55:00-07:00"
+ },
+ {
+  "id": 17,
+  "area": "AI",
+  "found_by": "LLM track, learned pass",
+  "finding": "in a snow start the model asked for a WorkBench three times; craft only said 'Wood 0/10' while it held 35 BorealWood",
+  "fix": "craft failures name the same item in a material you hold (BorealWoodWorkBench)",
+  "effect": "pending: A/B rerun",
+  "commit": "6284810",
+  "at": "2026-10-15T18:00:00-07:00"
+ },
+ {
+  "id": 18,
+  "area": "AI",
+  "found_by": "LLM track, library reuse",
+  "finding": "a reused library skill aborted a furnace program for being 3 stone short of the check from the task it was learned on (the furnace needs 20, it had 27)",
+  "fix": "a reused skill's old check is a note; the task's own check decides",
+  "effect": "pending: A/B rerun",
+  "commit": "6284810",
+  "at": "2026-10-15T18:02:00-07:00"
+ },
+ {
+  "id": 19,
+  "area": "Benchmark",
+  "found_by": "Survival suite at 1x vs 4x",
+  "finding": "fast-forward made fights harder: with the world running between calls, every second the agent spends deciding costs 4 seconds of game, and the flier scenario fell from 3/3 at 1x to 1/3 at 4x",
+  "fix": "survival suites run headless at 1x; fast-forward only where the world freezes while the agent thinks (LLM and build tracks)",
+  "effect": "headless 1x survival suite 16/18, the best so far (15/18 rendered)",
+  "commit": "pending",
+  "at": "2026-10-15T18:20:00-07:00"
+ },
+ {
+  "id": 20,
+  "area": "Benchmark",
+  "found_by": "LLM track, fixed rerun",
+  "finding": "task patches 120 tiles apart while tree search reaches 180 each way, and the model cut 30 trees a call: the fifth task found no tree in reach",
+  "fix": "a fresh copy of the world before every task, each starting at the same patch with at least 10 trees",
+  "effect": "pending: A/B rerun",
+  "commit": "pending",
+  "at": "2026-10-15T18:15:00-07:00"
  }
 ]

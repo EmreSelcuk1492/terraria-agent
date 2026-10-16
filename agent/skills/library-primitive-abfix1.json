@@ -1,0 +1,97 @@
+[
+ {
+  "name": "gather_wood",
+  "description": "Collect at least 30 Wood by cutting nearby trees.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792111994.263538,
+  "uses": 5,
+  "successes": 3
+ },
+ {
+  "name": "obtain_boreal_workbench",
+  "description": "Gather enough BorealWood and craft a single BorealWoodWorkBench.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "BorealWoodWorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792112030.448519,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "craft_wooden_hammer_simple",
+  "description": "Craft one WoodenHammer using existing Wood and a WorkBench.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792112068.6551921,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "mine_more_stone",
+  "description": "Dig down to find stone and mine 27 more StoneBlock tiles.",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "dig_down",
+    "args": {
+     "target": "Stone",
+     "max_depth": 50
+    }
+   },
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 27
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792112120.970232,
+  "uses": 1,
+  "successes": 1
+ }
+]

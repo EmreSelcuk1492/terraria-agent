@@ -198,11 +198,16 @@ namespace TerrariaAgentBridge.Skills
 
             NPC npc = Main.npc[npcIndex];
             float range = Game.WeaponReach(weapon);
-            int dx = (int)((npc.Center.X - p.Center.X) / 16f);
-            int dy = (int)((npc.Center.Y - p.Center.Y) / 16f);
+            float fx = (npc.Center.X - p.Center.X) / 16f, fy = (npc.Center.Y - p.Center.Y) / 16f;
+            int dx = (int)fx, dy = (int)fy;
 
-            bool inRange = Math.Abs(dx) <= range && Math.Abs(dy) <= Math.Max(3f, range * 0.6f);
-            mover.Drive(p, dx, dy, walk: !inRange);
+            // Reach to the target's edge, not its centre, in exact tiles: truncating to whole tiles meant a 1.8-tile
+            // shortsword only stabbed at 1 tile, and a Demon Eye bounces off before getting that close. Against a
+            // flier, hold the ground and stab as it swoops in; walking after it is how health drained in the suites.
+            bool flier = npc.noGravity;
+            bool inRange = Math.Abs(fx) <= range + npc.width / 32f + (flier ? 0.5f : 0f)
+                           && Math.Abs(fy) <= Math.Max(3f, range * 0.6f) + npc.height / 32f;
+            mover.Drive(p, dx, dy, walk: !inRange && !flier);
             if (mover.Done) { Fail(mover.Message); return; }
 
             p.direction = npc.Center.X < p.Center.X ? -1 : 1;

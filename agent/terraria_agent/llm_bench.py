@@ -260,6 +260,7 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
         raise BridgeError(r.get("error", "setup failed"))
     calls0, secs0 = planner.calls, planner.seconds
     ex = Executor(bridge, library if use_library else None, mode)
+    ex.log.append(f"start {r.get('at')}, {r.get('trees', '?')} trees within 30 tiles")
     hits = library.search(f"{task.name} {task.goal} {json.dumps(task.check)}") if (library and use_library) else []
     lib_text = "\n".join(s.summary() for s in hits) or "(empty)"
     messages = [{"role": "system", "content": SYSTEM.replace("{menu}", skill_menu(mode))},
@@ -296,6 +297,28 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
                       round(ex.game_seconds, 1), ex.skill_calls, ex.used, None, program, ex.log)
 
 
+def reset(cmd: str, bridge: BridgeClient, timeout: float = 600) -> None:
+    """Restart the game on a fresh copy of the world and wait until it is in the world again."""
+    import subprocess
+    subprocess.run(cmd, shell=True, check=True, stdout=subprocess.DEVNULL)
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            if bridge.health().get("in_world"):
+                return
+        except BridgeError:
+            pass
+        time.sleep(3)
+    raise BridgeError(f"world did not come back after reset ({cmd})")
+
+
+def patch(i: int, start_dx: int = 150, spacing: int = 400) -> int:
+    """Task i's start, in tiles from spawn: east, west, further east, further west... (+150, -150, +550, -550, ...).
+    Each task gets its own forest, the same one every pass. At 120 tiles apart, with mine_nearest searching 180 tiles
+    each way and the model cutting 30 trees a call, the first four tasks felled every tree the fifth could reach."""
+    return (1 if i % 2 == 0 else -1) * (start_dx + spacing * (i // 2))
+
+
 def write_report(results: list[TaskResult], meta: dict[str, Any], out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps({"meta": meta, "results": [asdict(r) for r in results]}, indent=1))
@@ -327,6 +350,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--library-path", type=Path, help="default skills/library-<mode>.json")
     ap.add_argument("--narrate", action="store_true", help="show the model's reasoning and programs in the in-game chat")
     ap.add_argument("--start-dx", type=int, default=150, help="start this many tiles east of spawn (untouched terrain)")
+    ap.add_argument("--reset-world", metavar="CMD",
+                    help="shell command run before every task that restarts the game on an untouched copy of the world "
+                         "(sim/llm_ab.sh passes sim/run.sh ... --fresh): every task starts on the same uncut forest")
     ap.add_argument("--speed", type=int, default=1, help="fast-forward: k game ticks per frame (timings are game time)")
     ap.add_argument("--headless", action="store_true", help="skip drawing (sim containers)")
     a = ap.parse_args(argv)
@@ -357,14 +383,18 @@ def main(argv: list[str] | None = None) -> int:
     tasks = [t for t in TASKS if not a.only or t.name in a.only]
     out = ROOT / "runs" / "llm" / f"{time.strftime('%Y%m%d-%H%M%S')}-{a.mode}-{a.library}"
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
-            "library_path": str(lib_path), "bridge": a.bridge, "sim": sim,
+            "library_path": str(lib_path), "bridge": a.bridge, "sim": sim, "world_reset_per_task": bool(a.reset_world),
             "library_size_at_start": len(library.skills) if library else 0}
     results = []
     for i, t in enumerate(TASKS):
         if t not in tasks:
             continue
-        # Each task on its own patch of ground (same patch every pass), so one task's tree cutting can't starve the next.
-        place = {**start, "surface_at": a.start_dx + 120 * i}
+        if a.reset_world:
+            reset(a.reset_world, bridge)
+            bridge._post("/config", {"peaceful": True, "god": True, "freeze": True, "guard": True, "background": True, **sim})
+            place = {**start, "surface_at": a.start_dx, "min_trees": 10}  # same patch, untouched, every task
+        else:
+            place = {**start, "surface_at": patch(i, a.start_dx), "min_trees": 10}
         try:
             r = run_task(t, bridge, planner, library, a.mode, a.attempts, a.library != "off", place)
         except BridgeError as e:

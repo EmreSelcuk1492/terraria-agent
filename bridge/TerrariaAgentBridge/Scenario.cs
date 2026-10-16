@@ -42,7 +42,19 @@ namespace TerrariaAgentBridge
             {
                 // Natural terrain `dx` tiles east of spawn (away from whatever earlier runs built or dug at spawn).
                 int tx = Math.Clamp(Main.spawnTileX + sa.GetInt32(), 60, Main.maxTilesX - 60);
+                // min_trees: walk outward (up to 200 tiles) to the first column with that many trees within 30 tiles,
+                // so a gathering task never starts in a desert, or in a forest an earlier task cut down.
+                if (r.TryGetProperty("min_trees", out var mt) && mt.GetInt32() > 0)
+                {
+                    int want = mt.GetInt32(), found = -1;
+                    for (int k = 0; k <= 200 && found < 0; k += 5)
+                        foreach (int c in new[] { tx + k, tx - k })
+                            if (c > 60 && c < Main.maxTilesX - 60 && TreesNear(c, Ground(c, 50), 30) >= want) { found = c; break; }
+                    if (found < 0) return Error($"no surface spot with {want} trees within 200 tiles of x={tx}");
+                    tx = found;
+                }
                 int ty = Ground(tx, 50);
+                did["trees"] = TreesNear(tx, ty, 30);
                 p.Teleport(new Vector2(tx * 16 + 8 - p.width / 2f, ty * 16 - p.height), TeleportationStyleID.DebugTeleport);
                 p.velocity = Vector2.Zero;
                 p.fallStart = (int)(p.position.Y / 16f);
@@ -151,6 +163,16 @@ namespace TerrariaAgentBridge
         /// on an island at y=66 over a 29-tile drop). Islands float in the top part of the sky; the surface sits near
         /// Main.worldSurface. An air-gap test was tried first and wrongly skipped real ground over caves.
         /// </summary>
+        /// <summary>Tree trunks (bases) within `r` columns and 15 rows of (x, y).</summary>
+        public static int TreesNear(int x, int y, int r)
+        {
+            int n = 0;
+            for (int i = x - r; i <= x + r; i++)
+            for (int j = y - 15; j <= y + 15; j++)
+                if (Game.InWorld(i, j) && Framing.GetTileSafely(i, j).HasTile && Game.IsTree(Framing.GetTileSafely(i, j).TileType) && Game.IsTreeBase(i, j)) n++;
+            return n;
+        }
+
         public static int Ground(int x, int fromY)
         {
             int y = Math.Max(fromY, (int)(Main.worldSurface * 0.45));
