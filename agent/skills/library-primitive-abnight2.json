@@ -1,0 +1,217 @@
+[
+ {
+  "name": "cut_trees_for_wood",
+  "description": "Mine 30 trees to obtain at least 30 Wood.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792140762.5484421,
+  "uses": 15,
+  "successes": 15
+ },
+ {
+  "name": "obtain_workbench",
+  "description": "Cut trees for wood and craft one WorkBench into inventory.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:cut_trees_for_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792140843.3371341,
+  "uses": 10,
+  "successes": 10
+ },
+ {
+  "name": "get_wooden_hammer",
+  "description": "Obtain a WoodenHammer by cutting trees, crafting a WorkBench, then crafting the hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792140926.829278,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "mine_stone_blocks",
+  "description": "Mine 30 StoneBlock using the existing CopperPickaxe",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792141012.494148,
+  "uses": 4,
+  "successes": 4
+ },
+ {
+  "name": "make_wooden_chair_and_table",
+  "description": "Craft a wooden chair and table using the workbench helper.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792141102.249525,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "get_wooden_door",
+  "description": "Obtain a wooden door by cutting trees, crafting a workbench, then crafting the door.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792141188.898686,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "hold_furnace_corrected",
+  "description": "Gather missing stone, create a workbench, and craft a Furnace.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 9
+    }
+   },
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792142608.9490361,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "obtain_wooden_hammer",
+  "description": "Cut trees, craft a WorkBench, then craft a WoodenHammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792143697.846829,
+  "uses": 1,
+  "successes": 1
+ }
+]
