@@ -141,6 +141,7 @@ namespace TerrariaAgentBridge
                     return new Dictionary<string, object>
                     {
                         ["ok"] = true, ["version"] = TerrariaAgentBridge.BridgeVersion, ["in_world"] = InWorld, ["freeze"] = FreezeWhileThinking,
+                        ["tick"] = Main.GameUpdateCount, ["tps"] = BridgeSystem.Tps, ["render"] = BridgeSystem.RenderEvery, ["speed"] = BridgeSystem.Speed,
                         ["player"] = InWorld ? Main.ActivePlayerFileData?.Name : null, ["world"] = InWorld ? Main.worldName : null,
                     };
 
@@ -241,6 +242,10 @@ namespace TerrariaAgentBridge
                         SkillRunner.Guard = guard.GetBoolean();
                     if (doc.RootElement.TryGetProperty("astar", out var astar))
                         Skills.Pathfinder.Enabled = astar.GetBoolean();
+                    if (doc.RootElement.TryGetProperty("speed", out var speed))
+                        BridgeSystem.Speed = Math.Clamp(speed.GetInt32(), 1, 8);
+                    if (doc.RootElement.TryGetProperty("render", out var render))
+                        BridgeSystem.RenderEvery = Math.Max(1, render.GetInt32());
                     if (doc.RootElement.TryGetProperty("god", out var god))
                         Sandbox.God = god.GetBoolean();
                     int cleared = 0;
@@ -250,7 +255,8 @@ namespace TerrariaAgentBridge
                         if (Sandbox.Peaceful && InWorld) cleared = (int)await OnMainThread(() => Sandbox.ClearHostiles());
                     }
                     return new Dictionary<string, object> { ["ok"] = true, ["freeze"] = FreezeWhileThinking, ["background"] = Background,
-                        ["guard"] = SkillRunner.Guard, ["peaceful"] = Sandbox.Peaceful, ["god"] = Sandbox.God, ["astar"] = Skills.Pathfinder.Enabled, ["cleared"] = cleared };
+                        ["guard"] = SkillRunner.Guard, ["peaceful"] = Sandbox.Peaceful, ["god"] = Sandbox.God, ["astar"] = Skills.Pathfinder.Enabled,
+                        ["render"] = BridgeSystem.RenderEvery, ["speed"] = BridgeSystem.Speed, ["cleared"] = cleared };
                 }
 
                 case "POST /cancel":

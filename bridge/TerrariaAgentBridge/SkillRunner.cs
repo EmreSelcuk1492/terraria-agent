@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -76,6 +77,14 @@ namespace TerrariaAgentBridge
         // gets to run; the per-skill budget stops an unkillable/unreachable enemy from pausing a skill forever.
         private const int GuardRange = 6, MaxDefenseTicks = 60 * 20, MaxGuardTicks = 60 * 90;
 
+        // Timeouts count game ticks, and a game that slows down stretches them: in the LLM track a mine_nearest with a
+        // 180 s budget ran 6918 s of wall clock. A second budget in wall-clock time (twice the tick budget, plus the
+        // guard's) ends a skill like that, and every result reports ticks, wall seconds and the tick rate it ran at.
+        private static readonly System.Diagnostics.Stopwatch wall = new();
+        private static readonly System.Diagnostics.Stopwatch busy = new();
+        private static double busyMaxMs;
+        private static double WallBudget(Skill s) => s.TimeoutTicks / 60.0 * 2 + MaxGuardTicks / 60.0 + 30;
+
         public static bool IsRunning => current != null;
         public static string CurrentName => current?.Name;
         /// <summary>The running skill lets another mod drive controls this tick (never while the guard is fighting).</summary>
@@ -86,6 +95,9 @@ namespace TerrariaAgentBridge
         {
             Cancel($"interrupted by {skill.Name}");
             current = skill;
+            wall.Restart();
+            busy.Reset();
+            busyMaxMs = 0;
             lastLife = Main.LocalPlayer.statLife;
             defense = null;
             guardCooldown = 0;
@@ -132,8 +144,17 @@ namespace TerrariaAgentBridge
                 current.ForceFail($"INTERRUPTED: took {lastLife - p.statLife} damage (hp {p.statLife}/{p.statLifeMax2}). {Observation.ThreatSummary(p)} Fight (attack), move away, or heal before continuing.");
             else if (current.Ticks > current.TimeoutTicks)
                 current.ForceFail($"{current.Name} timed out after {current.TimeoutTicks / 60}s");
+            else if (wall.Elapsed.TotalSeconds > WallBudget(current))
+                current.ForceFail($"{current.Name} ran out of wall-clock time: {wall.Elapsed.TotalSeconds:0}s for {current.Ticks / 60}s of game time "
+                                  + $"(the game slowed to {current.Ticks / wall.Elapsed.TotalSeconds:0.0} ticks/s; 60 is normal)");
             else
+            {
+                double before = busy.Elapsed.TotalMilliseconds;
+                busy.Start();
                 current.Tick(p);
+                busy.Stop();
+                busyMaxMs = Math.Max(busyMaxMs, busy.Elapsed.TotalMilliseconds - before);
+            }
 
             lastLife = p.statLife;
             if (current.Done) Finish(p);
@@ -217,6 +238,10 @@ namespace TerrariaAgentBridge
                 ["skill"] = skill.Name,
                 ["message"] = skill.Message + guard,
                 ["ticks"] = skill.Ticks,
+                ["wall_s"] = Math.Round(wall.Elapsed.TotalSeconds, 1),
+                ["skill_cpu_s"] = Math.Round(busy.Elapsed.TotalSeconds, 2),
+                ["slowest_tick_ms"] = Math.Round(busyMaxMs, 1),
+                ["tps"] = wall.Elapsed.TotalSeconds > 0.5 ? Math.Round(skill.Ticks / wall.Elapsed.TotalSeconds, 1) : 60.0,
                 ["player"] = Observation.PlayerSummary(p),
                 ["inventory"] = Observation.Inventory(p),
             });

@@ -107,6 +107,7 @@ class OllamaPlanner:
         self.calls = 0
         self.seconds = 0.0
         self.tokens = 0
+        self.empty = 0
 
     def plan(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         t0 = time.time()
@@ -114,13 +115,28 @@ class OllamaPlanner:
                 "options": {"num_ctx": 16384, "temperature": 0.2}}
         if self.think:
             body["think"] = self.think
-        r = self.http.post("/api/chat", json=body).json()
-        self.calls += 1
+        # gpt-oss under a JSON schema sometimes answers with empty content (the whole reply went to "thinking"):
+        # three empty replies in a row cost the hammer task all its attempts without one game action. Ask again,
+        # a little warmer, before giving up; the error says why the reply was empty.
+        why = ""
+        for retry in range(3):
+            if retry:
+                body["options"] = {**body["options"], "temperature": 0.2 + 0.3 * retry}
+            r = self.http.post("/api/chat", json=body).json()
+            self.calls += 1
+            self.tokens += int(r.get("eval_count", 0)) + int(r.get("prompt_eval_count", 0))
+            if "error" in r:
+                self.seconds += time.time() - t0
+                raise RuntimeError(f"ollama: {r['error']}")
+            content = (r.get("message") or {}).get("content", "").strip()
+            if content:
+                self.seconds += time.time() - t0
+                return json.loads(content)
+            self.empty += 1
+            why = (f"empty reply (done_reason {r.get('done_reason')}, {len((r.get('message') or {}).get('thinking') or '')} "
+                   f"chars of thinking, {r.get('prompt_eval_count')} prompt tokens)")
         self.seconds += time.time() - t0
-        self.tokens += int(r.get("eval_count", 0)) + int(r.get("prompt_eval_count", 0))
-        if "error" in r:
-            raise RuntimeError(f"ollama: {r['error']}")
-        return json.loads(r["message"]["content"])
+        raise RuntimeError(f"ollama: {why} x3")
 
 
 def skill_menu(mode: str) -> str:
@@ -201,20 +217,26 @@ class Executor:
                     return False, f"step {i + 1}: no library skill '{name}'"
                 self.used.append(sk.name)
                 ok, msg = self.run(sk.program, depth + 1)
-                ok = ok and verify(sk.check, inventory(self.bridge.state()))
                 self.library.record_use(sk.name, ok)
                 if not ok:
-                    return False, f"step {i + 1}: library skill {name} did not reach its check {json.dumps(sk.check)}: {msg}"
+                    return False, f"step {i + 1}: library skill {name} failed: {msg}"
+                # Its original check belongs to the task it was learned on (collect_stone ran "mine 27" because that
+                # task started with 3 stone, then aborted a furnace program that needed 20 over its 30-stone check).
+                # A shortfall is a note for the model; the task's own check decides.
+                if not verify(sk.check, inventory(self.bridge.state())):
+                    self.log.append(f"  note: {name} ran but is short of its original check {json.dumps(sk.check)}")
                 continue
             if name in NOT_PLANNABLE or (self.mode == "primitive" and name in MACROS) or name not in _SKILLS:
                 return False, f"step {i + 1}: '{name}' is not an available skill"
+            g0 = self.bridge.game_seconds()
             t0 = time.time()
             try:
                 r = self.bridge.skill(name, args)
             except BridgeError as e:
                 return False, f"step {i + 1} {name}: {e}"
             self.skill_calls += 1
-            self.game_seconds += time.time() - t0
+            g1 = self.bridge.game_seconds() if g0 is not None else None
+            self.game_seconds += (g1 - g0) if g1 is not None else time.time() - t0  # game time, not wall time
             ok = bool(r.get("ok"))
             msg = r.get("message") or r.get("error") or ""
             self.log.append(f"{'ok ' if ok else 'ERR'} {name} {json.dumps(args)} -> {msg[:200]}")
@@ -305,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--library-path", type=Path, help="default skills/library-<mode>.json")
     ap.add_argument("--narrate", action="store_true", help="show the model's reasoning and programs in the in-game chat")
     ap.add_argument("--start-dx", type=int, default=150, help="start this many tiles east of spawn (untouched terrain)")
+    ap.add_argument("--speed", type=int, default=1, help="fast-forward: k game ticks per frame (timings are game time)")
+    ap.add_argument("--headless", action="store_true", help="skip drawing (sim containers)")
     a = ap.parse_args(argv)
     lock = exclusive(a.bridge)  # noqa: F841 (held for the whole run)
     lib_path = a.library_path or ROOT / "skills" / f"library-{a.mode}.json"
@@ -312,7 +336,8 @@ def main(argv: list[str] | None = None) -> int:
         lib_path.rename(lib_path.with_suffix(f".{time.strftime('%Y%m%d-%H%M%S')}.json"))  # keep old libraries
     library = None if a.library == "off" else SkillLibrary(lib_path)
     bridge = BridgeClient(a.bridge, skill_timeout=900)
-    bridge._post("/config", {"peaceful": True, "god": True, "freeze": True, "guard": True, "background": True})
+    sim = {"speed": a.speed, "render": 1000 if a.headless else 1}
+    bridge._post("/config", {"peaceful": True, "god": True, "freeze": True, "guard": True, "background": True, **sim})
     start = {"fresh_player": True, "surface_at": a.start_dx, "clear": True, "natural_spawns": False, "time": "noon"}
     planner = OllamaPlanner(a.model, think=a.think)
     if a.narrate:
@@ -332,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     tasks = [t for t in TASKS if not a.only or t.name in a.only]
     out = ROOT / "runs" / "llm" / f"{time.strftime('%Y%m%d-%H%M%S')}-{a.mode}-{a.library}"
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
-            "library_path": str(lib_path), "bridge": a.bridge,
+            "library_path": str(lib_path), "bridge": a.bridge, "sim": sim,
             "library_size_at_start": len(library.skills) if library else 0}
     results = []
     for i, t in enumerate(TASKS):

@@ -53,10 +53,12 @@ namespace TerrariaAgentBridge.Skills
                 if (PlaceNear(p, slot)) return; // adjTile is checked next tick
                 if (placeTries < 3)
                 {
-                    // Uneven ground or furniture all around: walk a few tiles (+6, then -12, then +18 from there) and retry.
+                    // Uneven ground or furniture all around: walk to the nearest flat stretch (the LLM track's chair_table
+                    // failed here and the model then guessed coordinates); without one, a few tiles either way.
+                    var flat = placeTries == 0 ? FlatSpot(p) : null;
                     int off = (placeTries % 2 == 0 ? 1 : -1) * 6 * (placeTries + 1);
                     placeTries++;
-                    child = new MoveTo(Game.TileX(p) + off, Game.TileY(p), 2);
+                    child = flat is { } f ? new MoveTo(f.x, f.y, 1) : new MoveTo(Game.TileX(p) + off, Game.TileY(p), 2);
                     return;
                 }
                 Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it; move to flat ground");
@@ -87,11 +89,52 @@ namespace TerrariaAgentBridge.Skills
             return best;
         }
 
+        /// <summary>
+        /// Nearest stretch of floor `width` columns wide with 3 rows of air above it (plants don't count: placing cuts
+        /// them), within 40 tiles sideways. Returns where to stand: its middle, one row above the floor.
+        /// </summary>
+        public static (int x, int y)? FlatSpot(Player p, int width = 6)
+        {
+            int px = Game.TileX(p), py = Game.TileY(p);
+            (int, int)? best = null;
+            int bestD = int.MaxValue;
+            for (int x = px - 40; x <= px + 40; x++)
+            for (int f = py - 12; f <= py + 14; f++)
+            {
+                int d = Math.Abs(x + width / 2 - px) + 2 * Math.Abs(f - py);
+                if (d >= bestD || !Game.InWorld(x, f) || !Game.InWorld(x + width, f)) continue;
+                bool ok = true;
+                for (int i = 0; i < width && ok; i++)
+                {
+                    if (!Game.Solid(x + i, f) || Game.Platform(x + i, f)) { ok = false; break; }
+                    for (int h = 1; h <= 3 && ok; h++)
+                    {
+                        Tile t = Framing.GetTileSafely(x + i, f - h);
+                        if ((t.HasTile && !Main.tileCut[t.TileType]) || t.LiquidAmount > 0) ok = false;
+                    }
+                }
+                if (ok) { bestD = d; best = (x + width / 2, f - 1); }
+            }
+            return best;
+        }
+
+        /// <summary>Grass, flowers, mushrooms: a swing of anything cuts them, and they block placing furniture.</summary>
+        private static void CutPlants(int cx, int cy)
+        {
+            for (int x = cx - 5; x <= cx + 5; x++)
+            for (int y = cy - 3; y <= cy; y++)
+            {
+                Tile t = Framing.GetTileSafely(x, y);
+                if (Game.InWorld(x, y) && t.HasTile && Main.tileCut[t.TileType] && !Main.tileContainer[t.TileType]) WorldGen.KillTile(x, y);
+            }
+        }
+
         /// <summary>Places the station from `slot` on the floor beside the player.</summary>
         public static bool PlaceNear(Player p, int slot)
         {
             Item item = p.inventory[slot];
             int px = Game.TileX(p), feet = Game.TileY(p) + 1;
+            CutPlants(px, feet);
             foreach (int dx in new[] { 2, -2, 3, -3, 4, -4, 1, -1 })
             foreach (int dy in new[] { 0, -1, 1 })
             {

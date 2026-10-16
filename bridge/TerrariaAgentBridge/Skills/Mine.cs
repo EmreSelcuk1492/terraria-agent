@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Terraria;
 using Terraria.ID;
 
@@ -131,6 +132,11 @@ namespace TerrariaAgentBridge.Skills
         private Mine current;
         private (int x, int y) currentTarget;
         private string lastFailure;
+        private int failsInARow, startX;
+        // Where a walk/tunnel toward a target got stuck, and which way it was heading. Targets further out that way are
+        // behind the same wall: in the LLM track one Ebonstone wall turned away ~100 trees one by one for 6918 s.
+        private readonly List<(int dir, int x)> walls = new();
+        private const int MaxFailsInARow = 5;
 
         public MineNearest(int tileType, int count)
         {
@@ -156,8 +162,21 @@ namespace TerrariaAgentBridge.Skills
             if (current != null)
             {
                 if (Step(current, p)) return;
-                if (current.Ok) mined++;
-                else { skip.Add(currentTarget); lastFailure = current.Message; }
+                if (current.Ok) { mined++; failsInARow = 0; }
+                else
+                {
+                    skip.Add(currentTarget);
+                    lastFailure = current.Message;
+                    int dir = Math.Sign(currentTarget.x - startX);
+                    if (dir != 0 && current.Message.StartsWith("could not get within reach")) walls.Add((dir, Game.TileX(p)));
+                    if (++failsInARow >= MaxFailsInARow)
+                    {
+                        string done = mined > 0 ? $"mined {mined}/{count}, then " : "";
+                        if (mined > 0) Succeed($"{done}{failsInARow} targets in a row were out of reach; stopped. Last failure: {lastFailure}");
+                        else Fail($"{failsInARow} targets in a row were out of reach; stopped. Last failure: {lastFailure} Try another area (move_to or tunnel_to elsewhere first).");
+                        return;
+                    }
+                }
                 current = null;
                 if (mined >= count)
                 {
@@ -174,12 +193,22 @@ namespace TerrariaAgentBridge.Skills
             if (next == null)
             {
                 string why = lastFailure != null ? $" Last failure: {lastFailure}" : "";
+                if (walls.Count > 0)
+                    why = $" Skipped targets past where the way was blocked ({string.Join(", ", walls.Select(w => $"{(w.dir > 0 ? "east" : "west")} of x={w.x}"))}): go around (another depth or side) or bring a stronger pickaxe.{why}";
                 if (mined > 0) Succeed($"mined {mined}/{count}; no more reachable targets within {radius} tiles.{why}");
                 else Fail($"no reachable target within {radius} tiles sideways, {Observation.ScanRadiusY} up/down.{why}");
                 return;
             }
             currentTarget = next.Value;
+            startX = Game.TileX(p);
             current = new Mine(currentTarget.x, currentTarget.y);
+        }
+
+        private bool BehindWall(int x)
+        {
+            foreach (var (dir, wx) in walls)
+                if ((x - wx) * dir > 0) return true;
+            return false;
         }
 
         private (int x, int y)? FindNearest(Player p, int rx)
@@ -190,7 +219,7 @@ namespace TerrariaAgentBridge.Skills
             for (int x = px - rx; x <= px + rx; x++)
             for (int y = py - Observation.ScanRadiusY; y <= py + Observation.ScanRadiusY; y++)
             {
-                if (!Game.InWorld(x, y) || skip.Contains((x, y))) continue;
+                if (!Game.InWorld(x, y) || skip.Contains((x, y)) || BehindWall(x)) continue;
                 Tile t = Framing.GetTileSafely(x, y);
                 if (!t.HasTile) continue;
                 int type = t.TileType;

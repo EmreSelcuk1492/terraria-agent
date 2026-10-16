@@ -118,9 +118,28 @@ def _wait_alive(bridge: BridgeClient, timeout: float = 30) -> None:
     raise BridgeError("player still dead after 30s")
 
 
+class GameClock:
+    """Seconds of game time since start (bridge tick counter), so a scenario's limit means the same at any sim speed:
+    at ~21 ticks/s a 60 s wall-clock limit gave the agent 21 s of game, and fast-forward would give it 4 minutes.
+    Falls back to wall time on bridges without the counter."""
+
+    def __init__(self, bridge: BridgeClient):
+        self.bridge = bridge
+        g = bridge.game_seconds()
+        self.game = g is not None
+        self.t0 = g if self.game else time.time()
+
+    def now(self) -> float:
+        try:
+            return ((self.bridge.game_seconds() or 0.0) if self.game else time.time()) - self.t0
+        except BridgeError:
+            return 0.0
+
+
 def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[str, Any] | None = None) -> Result:
     bridge = BridgeClient(url, skill_timeout=sc.seconds + 120)
     canceller = BridgeClient(url)
+    clock: GameClock | None = None
     t0 = time.time()
     try:
         _wait_alive(bridge)
@@ -135,6 +154,7 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
         if not r.get("ok"):
             raise BridgeError(r.get("error", "scenario setup failed"))
         spawned = {s["index"] for s in r.get("spawned", [])}
+        clock = GameClock(canceller)
 
         if sc.call:
             ax, ag = r.get("arena") or (0, 0)
@@ -146,7 +166,7 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
                 args["y"] = ag + args.pop("dy")
             res = bridge.skill(name, args)
             ok, msg = bool(res.get("ok")), res.get("message") or res.get("error") or ""
-            took = round(time.time() - t0, 1)
+            took = round(clock.now(), 1)
             fails = [] if ok and took <= sc.seconds else [f"{name} failed: {msg[:160]}" if not ok else f"took {took}s > {sc.seconds}s"]
             hp = int(res.get("player", {}).get("hp", 0))
             return Result(sc.name, url, attempt, not fails, 0, hp, 0, 0, took, fails, [f"{took:5.1f}s {'ok ' if ok else 'ERR'} {name} {json.dumps(args)} -> {msg[:200]}"])
@@ -159,16 +179,15 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
             def call(name: str, args: dict[str, Any]) -> tuple[bool, str]:
                 ok, msg = real_call(name, args)
                 guard = msg[msg.find(" [guard:"):] if " [guard:" in msg else ""  # appended last: keep it
-                calls.append(f"{time.time() - t0:5.1f}s {'ok ' if ok else 'ERR'} {name} -> {msg[:160]}{' ...' + guard if guard and len(msg) > 160 else ''}")
+                calls.append(f"{clock.now():5.1f}s {'ok ' if ok else 'ERR'} {name} -> {msg[:160]}{' ...' + guard if guard and len(msg) > 160 else ''}")
                 return ok, msg
 
             d.call = call
-            deadline = t0 + sc.seconds
             stop = threading.Event()
 
             def watchdog() -> None:  # the work call blocks; end it when the scenario's time is up
                 while not stop.wait(0.5):
-                    if time.time() >= deadline:
+                    if clock.now() >= sc.seconds:
                         try:
                             canceller.cancel()
                         except BridgeError:
@@ -176,7 +195,7 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
 
             threading.Thread(target=watchdog, daemon=True).start()
             try:
-                while time.time() < deadline:
+                while clock.now() < sc.seconds:
                     c = d.observe()
                     if d.safety(c):
                         continue
@@ -204,9 +223,9 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
             fails.append(f"hp {hp} < {sc.min_hp}")
         if sc.min_cleared is not None and cleared < sc.min_cleared:
             fails.append(f"cleared {cleared}/{len(spawned)} < {sc.min_cleared}")
-        return Result(sc.name, url, attempt, not fails, deaths, hp, cleared, len(spawned), round(time.time() - t0, 1), fails, calls)
+        return Result(sc.name, url, attempt, not fails, deaths, hp, cleared, len(spawned), round(clock.now(), 1), fails, calls)
     except BridgeError as e:
-        return Result(sc.name, url, attempt, False, 0, 0, 0, 0, round(time.time() - t0, 1), ["error"], [], str(e))
+        return Result(sc.name, url, attempt, False, 0, 0, 0, 0, round(clock.now() if clock else time.time() - t0, 1), ["error"], [], str(e))
     finally:
         try:
             bridge._post("/scenario", {"clear": True, "natural_spawns": True})  # leave the world playable
@@ -214,6 +233,17 @@ def run_one(sc: Scenario, url: str, attempt: int, out_dir: Path, config: dict[st
             pass
         bridge.close()
         canceller.close()
+
+
+def _alive(url: str) -> bool:
+    for _ in range(3):
+        try:
+            if BridgeClient(url).health().get("in_world"):
+                return True
+        except BridgeError:
+            pass
+        time.sleep(5)
+    return False
 
 
 def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_dir: Path, verbose: bool = True,
@@ -234,6 +264,13 @@ def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_di
             except queue.Empty:
                 return
             r = run_one(sc, url, attempt, out_dir, config)
+            if r.error and "unreachable" in r.error and not _alive(url):
+                # The game instance died (one did, and its worker failed 27 jobs in a second as "unreachable", which
+                # published a 3/30 suite). Hand the job back and retire this instance; the others finish the queue.
+                jobs.put((sc, attempt))
+                if verbose:
+                    print(f"instance {url} is down; its jobs go to the other instances", flush=True)
+                return
             with lock:
                 results.append(r)
                 if verbose:
@@ -246,6 +283,8 @@ def run_suite(bridges: list[str], scenarios: list[Scenario], repeat: int, out_di
         t.start()
     for t in threads:
         t.join()
+    if not jobs.empty():
+        print(f"{jobs.qsize()} job(s) not run: every instance went down", flush=True)
     write_report(results, scenarios, out_dir, config)
     return results
 
@@ -279,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tag", action="append", help="only scenarios with this tag (survival, nav)")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="mod /config switch for the whole suite, e.g. astar=false (A/B runs)")
+    ap.add_argument("--speed", type=int, default=1, help="fast-forward: k game ticks per frame (limits are game time)")
+    ap.add_argument("--headless", action="store_true", help="skip drawing (sim containers: ~3x the tick rate)")
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args(argv)
     if a.list:
@@ -288,14 +329,24 @@ def main(argv: list[str] | None = None) -> int:
     chosen = [s for s in SCENARIOS if (not a.only or s.name in a.only) and (not a.tag or set(a.tag) & set(s.tags))]
     config = {k: json.loads(v) if v in ("true", "false") or v.replace(".", "").isdigit() else v
               for k, v in (kv.split("=", 1) for kv in a.set)}
+    if a.speed != 1:
+        config["speed"] = a.speed
+    if a.headless:
+        config["render"] = 1000
     if not chosen:
         ap.error(f"no scenario named {a.only}; see --list")
     locks = [exclusive(u) for u in (a.bridge or ["http://127.0.0.1:7979"])]  # noqa: F841
-    out = ROOT / "runs" / "scenarios" / time.strftime("%Y%m%d-%H%M%S")
-    results = run_suite(a.bridge or ["http://127.0.0.1:7979"], chosen, a.repeat, out, config=config)
+    # One suite per kind (the lab charts nav and survival separately; a mixed run was filed as survival).
+    groups = [g for g in ([s for s in chosen if "nav" in s.tags], [s for s in chosen if "nav" not in s.tags]) if g]
     from .lab import publish_quietly
-    publish_quietly(out)
-    print(f"\n{sum(r.passed for r in results)}/{len(results)} passed. Report: {out / 'report.md'}")
+    results = []
+    for g in groups:
+        out = ROOT / "runs" / "scenarios" / time.strftime("%Y%m%d-%H%M%S")
+        rs = run_suite(a.bridge or ["http://127.0.0.1:7979"], g, a.repeat, out, config=config)
+        publish_quietly(out)
+        print(f"\n{sum(r.passed for r in rs)}/{len(rs)} passed. Report: {out / 'report.md'}")
+        results += rs
+        time.sleep(1)  # distinct stamps
     return 0 if all(r.passed for r in results) else 1
 
 

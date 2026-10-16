@@ -37,7 +37,15 @@ INVALID = {
     "survival:20261015-140428": "spawn location and the Mac character (before the arena and fresh_player)",
     "nav:20261015-142819": "the detour course was unsolvable (replaced by the tunnel course)",
     "nav:20261015-142919": "the detour course was unsolvable (replaced by the tunnel course)",
+    "llm:20261015-172952": "the game container was killed mid-run (Docker ran out of memory with four worlds starting at once)",
+    "survival:20261015-174409": "one of three game instances crashed and its worker failed 27 jobs as unreachable (fixed: jobs go back to the queue)",
 }
+
+
+def _harness_problem(res: list[dict]) -> str | None:
+    """Results the harness lost (instance down, setup failed) say nothing about the agent: flag the run."""
+    errors = sum(1 for r in res if r.get("error"))
+    return f"harness errors in {errors}/{len(res)} results (not agent failures)" if res and errors > 0.2 * len(res) else None
 
 
 def _env() -> dict[str, str] | None:
@@ -104,7 +112,7 @@ def scenario_run(d: Path) -> tuple[dict, list[dict]]:
     label = ("A* off (greedy)" if config.get("astar") is False else "A* on") if kind == "nav" else "survival suite"
     run = {"id": run_id, "project": PROJECT, "kind": kind, "label": label, "started_at": _stamp_time(d.name), "config": config,
            "summary": {"passed": passed, "attempts": len(res), "deaths": sum(r["deaths"] for r in res), "items": len(counts),
-                       **({"invalid": INVALID[f"{kind}:{d.name}"]} if f"{kind}:{d.name}" in INVALID else {})},
+                       **({"invalid": why} if (why := INVALID.get(f"{kind}:{d.name}") or _harness_problem(res)) else {})},
            "report_md": (d / "report.md").read_text() if (d / "report.md").exists() else "", "host": "sim"}
     return run, results
 

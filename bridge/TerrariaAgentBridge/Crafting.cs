@@ -46,7 +46,35 @@ namespace TerrariaAgentBridge
             return $"recipe [{Describe(r)}]" +
                 (stations.Count > 0 ? $" missing station: {string.Join(", ", stations)}" : "") +
                 (ingredients.Count > 0 ? $" missing: {string.Join(", ", ingredients)}" : "");
-        }));
+        })) + VariantHint(p, type);
+
+        /// <summary>
+        /// The same item in another material the player holds: "WorkBench" with 35 BorealWood -> BorealWoodWorkBench.
+        /// In the LLM track the model asked for a WorkBench three times in a snow start; the message only said
+        /// "Wood 0/10" (a fresh pass had found the Boreal one by luck).
+        /// </summary>
+        public static string VariantHint(Player p, int type)
+        {
+            string name = Game.ItemName(type);
+            string core = name.StartsWith("Wooden") ? name.Substring(6) : name.StartsWith("Wood") ? name.Substring(4) : name;
+            var mine = RecipesFor(type);
+            if (mine.Count == 0 || core.Length < 3) return "";
+            var hits = new List<string>();
+            for (int i = 0; i < Recipe.numRecipes && hits.Count < 3; i++)
+            {
+                Recipe r = Main.recipe[i];
+                string n = Game.ItemName(r.createItem.type);
+                if (r.Disabled || r.createItem.type == type || n == core || !n.EndsWith(core) || hits.Contains(n)) continue;
+                if (!mine.Any(m => Similar(m, r)) || MissingIngredients(p, r).Count > 0) continue;
+                hits.Add(n);
+            }
+            return hits.Count == 0 ? "" : $" You hold the materials for {string.Join(", ", hits)} (the same thing in another material): craft that instead.";
+        }
+
+        private static bool Similar(Recipe a, Recipe b) =>
+            a.createItem.stack == b.createItem.stack
+            && a.requiredItem.Count(i => !i.IsAir) == b.requiredItem.Count(i => !i.IsAir)
+            && a.requiredTile.Where(t => t >= 0).OrderBy(t => t).SequenceEqual(b.requiredTile.Where(t => t >= 0).OrderBy(t => t));
 
         /// <summary>Item types that satisfy an ingredient, honouring recipe groups ("any wood", "any iron bar").</summary>
         public static HashSet<int> Accepted(Recipe r, Item ingredient)

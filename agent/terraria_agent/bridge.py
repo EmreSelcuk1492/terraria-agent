@@ -58,6 +58,16 @@ class BridgeClient:
     def health(self) -> dict[str, Any]:
         return self._get("/health")
 
+    def game_seconds(self) -> float | None:
+        """The game's own clock (update ticks / 60). With fast-forward or a slow sim, wall time says nothing about
+        how much game time passed; time limits and timings use this. None on bridges older than the tick counter."""
+        t = self.health().get("tick")
+        return None if t is None else t / 60.0
+
+    def sim_speed(self, speed: int = 1, render: int = 1) -> dict[str, Any]:
+        """speed k = k game ticks per frame (fast-forward); render N = draw 1 frame in N (headless sims: 1000)."""
+        return self._post("/config", {"speed": speed, "render": render})
+
     def state(self) -> dict[str, Any]:
         return self._get("/state")
 

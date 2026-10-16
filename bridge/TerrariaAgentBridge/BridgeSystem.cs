@@ -12,8 +12,11 @@ namespace TerrariaAgentBridge
         public override void OnModLoad()
         {
             if (Main.dedServ) return;
+            // Sim containers start headless (TA_RENDER=1000, see sim/run.sh): menus still draw, worlds don't.
+            if (int.TryParse(Environment.GetEnvironmentVariable("TA_RENDER"), out int render)) RenderEvery = Math.Max(1, render);
             BridgeServer.Start();
             On_Main.DoUpdateInWorld += FreezeHook;
+            On_Main.DoDraw += DrawHook;
             On_Main.DoUpdate += MenuHook;
             IL_Main.DoUpdate += KeepRunningUnfocused;
         }
@@ -29,6 +32,38 @@ namespace TerrariaAgentBridge
             BridgeServer.FreezeWhileThinking = false;
             BridgeServer.Background = false;
             Skills.BuildHouse.ForgetSites();
+        }
+
+        /// <summary>
+        /// Draw 1 frame in RenderEvery (POST /config {"render": N}). The sim draws with software OpenGL under Rosetta,
+        /// and drawing, not the world update, is what held it at ~21 ticks/s: nobody watches a container's screen.
+        /// A skipped frame still moves the camera, because aiming maps world positions through Main.screenPosition.
+        /// </summary>
+        public static volatile int RenderEvery = 1;
+        public static volatile int Speed = 1;
+        private static int drawCount;
+
+        private static void DrawHook(On_Main.orig_DoDraw orig, Main self, GameTime gameTime)
+        {
+            int every = RenderEvery;
+            if (every <= 1 || Main.gameMenu || ++drawCount % every == 0) { orig(self, gameTime); return; }
+            Player p = Main.LocalPlayer;
+            if (p != null && p.active)
+                Main.screenPosition = p.Center - new Vector2(Main.screenWidth, Main.screenHeight) / 2f;
+        }
+
+        // Ticks per second over the last few seconds of wall clock (60 = full speed), for /health and run logs.
+        private static readonly Stopwatch tpsClock = Stopwatch.StartNew();
+        private static uint tpsStartTick;
+        public static double Tps { get; private set; } = 60;
+
+        public override void PostUpdateEverything()
+        {
+            double s = tpsClock.Elapsed.TotalSeconds;
+            if (s < 3) return;
+            Tps = Math.Round((Main.GameUpdateCount - tpsStartTick) / s, 1);
+            tpsStartTick = Main.GameUpdateCount;
+            tpsClock.Restart();
         }
 
         // Skills tick from SetControls, which a dead player never reaches; end the running skill here instead.
@@ -49,6 +84,9 @@ namespace TerrariaAgentBridge
         private static void MenuHook(On_Main.orig_DoUpdate orig, Main self, ref GameTime gameTime)
         {
             orig(self, ref gameTime);
+            // Fast-forward (POST /config {"speed": k}): k game ticks per frame. Only in a world, only while an agent
+            // drives; with drawing off the sim has the CPU for it. Benchmarks measure game ticks, so results match.
+            for (int i = 1; i < Speed && !Main.gameMenu && BridgeServer.AgentActive; i++) orig(self, ref gameTime);
             if (!Main.gameMenu) return;
             BridgeServer.PumpMainThread();
             if (BridgeServer.ExitRequested) { BridgeServer.ExitRequested = false; self.Exit(); return; }
