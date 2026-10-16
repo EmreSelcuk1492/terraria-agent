@@ -29,8 +29,25 @@ namespace TerrariaAgentBridge.Skills
         /// <param name="tunnel">Fall back to tunnel_to when walking can't get in reach. TunnelTo's own Mine children pass false, so the two can't nest without bound.</param>
         public Mine(int x, int y, bool tunnel = true) { this.x = x; this.y = y; canTunnel = tunnel; }
 
+        private bool clearedAbove;
+        private Mine onTop;
+
+        /// <summary>Lowest trunk tile of the tree standing at column x above row y (cutting it fells the whole tree).</summary>
+        private static int TreeBase(int x, int y)
+        {
+            while (Game.IsTree(Framing.GetTileSafely(x, y + 1).TileType) && Framing.GetTileSafely(x, y + 1).HasTile) y++;
+            return y;
+        }
+
         public override void Tick(Player p)
         {
+            if (onTop != null)
+            {
+                if (Step(onTop, p)) return;
+                if (!onTop.Ok) { Fail($"{Game.TileName(tileType)} at ({x},{y}) has a tree on it that would not fall: {onTop.Message}"); return; }
+                onTop = null;
+                return;
+            }
             if (broke != null)
             {
                 // Walk onto the drop for a moment so the items fly into the inventory.
@@ -73,6 +90,17 @@ namespace TerrariaAgentBridge.Skills
             WorldGen.KillTile(x, y);
             if (Framing.GetTileSafely(x, y).HasTile)
             {
+                // Something stands on it (a tree, a sapling, a plant): a player clears that first. The LLM track's
+                // furnace task stopped at grass under a tree on the way to stone.
+                Tile above = Framing.GetTileSafely(x, y - 1);
+                if (!clearedAbove && above.HasTile && (Game.IsTree(above.TileType) || Main.tileCut[above.TileType] || Main.tileAxe[above.TileType]))
+                {
+                    clearedAbove = true;
+                    if (Main.tileCut[above.TileType]) WorldGen.KillTile(x, y - 1);
+                    else { onTop = new Mine(x, TreeBase(x, y - 1), tunnel: false); }
+                    swingTicks = 0;
+                    return;
+                }
                 Fail($"{Game.TileName(tileType)} at ({x},{y}) did not break (something on top of it, or it is protected)");
                 return;
             }

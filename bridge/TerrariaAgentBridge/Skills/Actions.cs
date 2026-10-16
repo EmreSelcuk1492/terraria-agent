@@ -132,6 +132,10 @@ namespace TerrariaAgentBridge.Skills
                 station = new EnsureStation(need, gather: false);
                 return;
             }
+            // Programs use craft to mean "have it": the model crafted 30 StoneBlock right after mining 30 (LLM track,
+            // copper_bars), which only has odd recipes from walls. Nothing to make, but the goal holds.
+            int held = Game.CountItem(p, type);
+            if (made == 0 && held >= count) { Succeed($"crafted none: you already hold {held} {Game.ItemName(type)}"); return; }
             string msg = $"crafted {made}/{count} {Game.ItemName(type)}. {Crafting.Problems(p, type)}";
             if (made > 0) Succeed(msg); else Fail(msg);
         }

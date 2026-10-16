@@ -25,6 +25,33 @@ namespace TerrariaAgentBridge.Skills
         private bool walked;
         private int steps, placeTries;
 
+        private bool leveled;
+        private readonly Queue<Skill> todo = new();
+        private readonly HashSet<Skill> leveling = new();
+
+        /// <summary>
+        /// Clear a 3x3 space beside the player (toward the side with less to dig) and fill the floor under it, using
+        /// any solid block in the inventory (Wood counts). Steps that fail are skipped; the placement retry decides.
+        /// </summary>
+        private List<Skill> Level(Player p)
+        {
+            int px = Game.TileX(p), feet = Game.TileY(p) + 1;
+            int Dig(int d) { int n = 0; for (int k = 2; k <= 4; k++) for (int y = feet - 2; y <= feet; y++) if (Game.Solid(px + d * k, y)) n++; return n; }
+            int dir = Dig(1) <= Dig(-1) ? 1 : -1;
+            int block = Game.FindSlot(p, i => i.createTile >= 0 && Main.tileSolid[i.createTile] && !Main.tileSolidTop[i.createTile]
+                                                && !Main.tileFrameImportant[i.createTile] && i.stack > 0);
+            var steps = new List<Skill>();
+            for (int k = 2; k <= 4; k++)
+            {
+                int x = px + dir * k;
+                for (int y = feet - 2; y <= feet; y++)
+                    if (Game.Solid(x, y)) steps.Add(new Mine(x, y, tunnel: false));
+                if (!Game.Solid(x, feet + 1) && block >= 0) steps.Add(new Place(Game.ItemName(p.inventory[block].type), x, feet + 1));
+            }
+            foreach (var s in steps) leveling.Add(s);
+            return steps;
+        }
+
         public EnsureStation(int tileType, bool gather, int depth = 0) { this.tileType = tileType; this.gather = gather; this.depth = depth; }
 
         public override void Tick(Player p)
@@ -32,8 +59,9 @@ namespace TerrariaAgentBridge.Skills
             if (child != null)
             {
                 if (Step(child, p)) return;
-                if (!child.Ok && child is not MoveTo) { Fail(child.Message); return; }
+                if (!child.Ok && child is not MoveTo && !leveling.Contains(child)) { Fail(child.Message); return; }
                 child = null;
+                if (todo.Count > 0) { child = todo.Dequeue(); return; }
             }
             Crafting.RefreshStations(p);
             string name = Game.TileName(tileType);
@@ -61,7 +89,16 @@ namespace TerrariaAgentBridge.Skills
                     child = flat is { } f ? new MoveTo(f.x, f.y, 1) : new MoveTo(Game.TileX(p) + off, Game.TileY(p), 2);
                     return;
                 }
-                Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it; move to flat ground");
+                if (!leveled)
+                {
+                    // No flat ground in reach (a steep hillside, LLM track door task): level a spot beside you the way a
+                    // player would, then try again.
+                    leveled = true;
+                    foreach (var sk in Level(p)) todo.Enqueue(sk);
+                    placeTries = 2;
+                    if (todo.Count > 0) { child = todo.Dequeue(); return; }
+                }
+                Fail($"have a {Game.ItemName(p.inventory[slot].type)} but found no flat 3-tile spot next to you to place it, and could not level one; move to flat ground");
                 return;
             }
 
