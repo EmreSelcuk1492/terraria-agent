@@ -224,8 +224,8 @@
   "area": "Survival",
   "found_by": "Survival suite, two_zombies_low_night",
   "finding": "at 35 health with zombies 3 tiles away on both sides, dig_in (about 6 s of digging) died every time; the scenario sat at 1/3",
-  "fix": "flee skill (run to the safer side, jump enemies and walls) before digging in",
-  "effect": "pending: untested live (runs stopped when the host ran low on memory)",
+  "fix": "flee skill (run to the safer side, jump enemies and walls) before digging in; the bodyguard no longer stops a flee to fight",
+  "effect": "first live run (Mac showcase): flee escaped, 25 tiles, nothing within 18; then the zombies caught up during the 6 s dig_in and it died. Next: run further before digging",
   "commit": "794c1df",
   "at": "2026-10-15T18:40:00-07:00"
  }

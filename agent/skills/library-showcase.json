@@ -1,0 +1,31 @@
+[
+ {
+  "name": "get_wooden_hammer",
+  "description": "Gather wood and craft a wooden hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 3
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792114016.6956642,
+  "uses": 1,
+  "successes": 1
+ }
+]

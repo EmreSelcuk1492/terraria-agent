@@ -3,8 +3,8 @@
     python -m terraria_agent.showcase                 # Mac game on 7979
     python -m terraria_agent.showcase --acts nav,llm
 
-Acts: nav (greedy vs A* vs TerraBlind's tb_nav on the tunnel course), fight (a slime pack), bunker (low health at
-midnight, dig in), llm (the local model plans a crafting task from primitive skills, its reasoning in chat).
+Acts: flee (two zombies at low health: run, then dig in), wall (an Ebonstone box: give up fast with the reason), nav
+(greedy vs A* vs TerraBlind's tb_nav on the tunnel course), fight (a slime pack), bunker (low health at midnight, dig in), llm (the local model plans a crafting task from primitive skills, its reasoning in chat).
 Every act uses the scenario arena, which flattens a strip 80 tiles east of spawn: back the world up first.
 """
 
@@ -89,6 +89,26 @@ class Show:
         self.say(f"Bunker: {msg[:130]}")
         time.sleep(self.pace)
 
+    def flee(self) -> None:
+        self.title("Survival", "35 health at midnight, zombies three tiles away on both sides: digging in took too long, so run first")
+        self.setup(time="midnight", hp=35, spawn=[{"npc": "Zombie", "dx": -3}, {"npc": "Zombie", "dx": 3}])
+        ok, msg = self.skill("flee", {"distance": 18})
+        self.say(f"Flee: {msg[:120]}")
+        if ok:
+            ok, msg = self.skill("dig_in", {"wait_seconds": 15, "until_hp": 0.5})
+            self.say(f"Then the bunker: {msg[:120]}")
+        time.sleep(self.pace)
+
+    def wall(self) -> None:
+        self.title("Mining", "glass sealed in Ebonstone the copper pickaxe can't dig: this used to try every block, for hours")
+        box = [{"tile": "Ebonstone", "dx0": 8, "dx1": 16, "dy0": -6, "dy1": -1},
+               {"tile": "Glass", "dx0": 10, "dx1": 14, "dy0": -4, "dy1": -3}]
+        self.setup(time="noon", build=box)
+        t0 = time.time()
+        ok, msg = self.skill("mine_nearest", {"target": "Glass", "count": 5})
+        self.say(f"Gave up in {time.time() - t0:.0f}s with the reason: {msg[:150]}")
+        time.sleep(self.pace)
+
     def llm(self, model: str) -> None:
         task = next(t for t in llm_bench.TASKS if t.name == "hammer")
         self.title("The model thinks", f"{model}, running locally, plans '{task.goal}' from primitive skills only")
@@ -107,7 +127,7 @@ class Show:
 
         planner.plan = narrated
         r = llm_bench.run_task(task, self.b, planner, lib, "primitive", 3, True,
-                               {"fresh_player": True, "surface_at": 150, "clear": True, "natural_spawns": False, "time": "noon"})
+                               {"fresh_player": True, "surface_at": 150, "min_trees": 10, "clear": True, "natural_spawns": False, "time": "noon"})
         self.say(f"Verified by the game: {'PASS' if r.passed else 'FAIL'} after {r.attempts} attempt(s), "
                  f"{r.llm_seconds:.0f}s thinking. {'Saved to the skill library as ' + r.saved_as if r.saved_as else ''}")
         self.b._post("/config", {"freeze": False, "peaceful": False})
@@ -116,14 +136,14 @@ class Show:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="terraria_agent.showcase", description=__doc__.split("\n")[0])
     ap.add_argument("--bridge", default="http://127.0.0.1:7979")
-    ap.add_argument("--acts", default="nav,fight,bunker,llm")
+    ap.add_argument("--acts", default="flee,wall,fight,nav,llm")
     ap.add_argument("--pace", type=float, default=3.0, help="seconds between beats")
     ap.add_argument("--model", default="gpt-oss:20b")
     a = ap.parse_args(argv)
     b = BridgeClient(a.bridge, skill_timeout=900)
     b._post("/config", {"guard": True, "background": True, "freeze": False, "peaceful": False, "god": False})
     show = Show(b, a.pace)
-    show.say("Showcase: A* pathfinding, real combat, the dig-in bunker, and a local model writing its own skills.")
+    show.say("Showcase: running from a trap, knowing when to quit, A* pathfinding, real combat, and a local model writing its own skills.")
     for act in a.acts.split(","):
         getattr(show, act.strip())(*([a.model] if act.strip() == "llm" else []))
     b._post("/scenario", {"clear": True, "natural_spawns": True})

@@ -174,7 +174,8 @@ namespace TerrariaAgentBridge
                 defense = null;
                 return false;
             }
-            if (current is Attack || --guardCooldown > 0 || guardTicksUsed >= MaxGuardTicks) return false;
+            // flee runs from the enemies the guard would turn to fight.
+            if (current is Attack || current is Flee || --guardCooldown > 0 || guardTicksUsed >= MaxGuardTicks) return false;
             NPC threat = NearestThreat(p, hurt ? 12 : GuardRange);
             if (threat == null) return false;
             // Too weak to fight: the low-health check hands control back. Not while escaping (dig_in): there the
