@@ -1,5 +1,20 @@
 # Next testing session
 
+## Overnight 2026-10-21 (queued): A/A control, `sim/night9.sh`
+
+Both arms run night7's Director (HEAD 50e919d, refuge reverted) on mods-night8. Goal: the noise floor between two
+arms of the same code on one night, before trusting the next A/B. Score: `sim/ab_report.sh ~/Library/Caches/terraria-sim/night9`.
+
+## Overnight 2026-10-20 (night8): house refuge lost
+
+| Arm | avg steps | avg deaths | homes |
+|---|---|---|---|
+| old (night7 code) | 10.7 | 34.0 | 7/7 |
+| new (house refuge, d821dde) | 7.7 | 65.5 | 6/7 |
+
+Reverted in 50e919d. new3-5 died 85-144 times: worth reading why before retrying a shelter idea. LLM track 7/8 fresh
+and learned; copper_bars still fails with the recipe book in the prompt.
+
 ## Overnight 2026-10-16 (01:00-06:55, unattended)
 
 Queue: `sim/night.sh` -> `night-b.sh` -> `night-c.sh` -> `night-d.sh` (logs in `~/Library/Caches/terraria-sim/night/`).
