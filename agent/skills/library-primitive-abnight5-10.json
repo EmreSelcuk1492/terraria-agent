@@ -1,0 +1,293 @@
+[
+ {
+  "name": "collect_wood",
+  "description": "Mine the nearest 30 tree trunks to obtain at least 30 Wood.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792329735.8037791,
+  "uses": 17,
+  "successes": 16
+ },
+ {
+  "name": "obtain_workbench",
+  "description": "Collect enough wood and craft a WorkBench.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:collect_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792329812.2856388,
+  "uses": 9,
+  "successes": 7
+ },
+ {
+  "name": "wooden_hammer",
+  "description": "Collect wood, build a workbench, then craft one WoodenHammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:collect_wood",
+    "args": {}
+   },
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792329900.3892028,
+  "uses": 6,
+  "successes": 4
+ },
+ {
+  "name": "collect_stone_blocks",
+  "description": "Mine 30 StoneBlock tiles using the nearest available stone.",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792329979.8166988,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "make_furniture",
+  "description": "Collects wood, builds a workbench, crafts a wooden hammer, then makes a wooden chair and table.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:wooden_hammer",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792330076.0129762,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "obtain_wooden_door",
+  "description": "Collects wood, builds a workbench, crafts a wooden hammer, then makes a WoodenDoor.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:wooden_hammer",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792330167.1229188,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "make_furnace",
+  "description": "Mine additional stone blocks and craft a Furnace.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 19
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792330288.5147488,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "make_chair_and_table",
+  "description": "Craft a WorkBench, WoodenHammer, WoodenChair and WoodenTable using existing wood.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792330951.945266,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "make_wooden_door_directly",
+  "description": "Craft a WoodenHammer and then a WoodenDoor using the existing WorkBench and Wood.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792331037.652213,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "hold_furnace",
+  "description": "Craft a WorkBench then a Furnace with existing materials.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792331188.020051,
+  "uses": 1,
+  "successes": 1
+ }
+]

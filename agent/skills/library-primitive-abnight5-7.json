@@ -1,0 +1,216 @@
+[
+ {
+  "name": "gather_more_wood",
+  "description": "Cut three more trees to reach a minimum of 30 Wood in inventory.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 3
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792325753.517299,
+  "uses": 14,
+  "successes": 14
+ },
+ {
+  "name": "craft_workbench_from_trees",
+  "description": "Cut three trees to get enough Wood, then craft a WorkBench.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:gather_more_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792325797.177184,
+  "uses": 6,
+  "successes": 6
+ },
+ {
+  "name": "obtain_wooden_hammer",
+  "description": "Collect wood, create a workbench, and craft a wooden hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_more_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792325844.4405708,
+  "uses": 4,
+  "successes": 4
+ },
+ {
+  "name": "mine_stone_blocks",
+  "description": "Collect at least 30 StoneBlock by mining nearby stone with the existing pickaxe.",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792325934.5269172,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "make_chair_and_table_again",
+  "description": "Gather additional wood, build a workbench if needed, craft a wooden hammer, then craft one wooden chair and one wooden table.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_more_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792326025.6974652,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "obtain_wooden_door",
+  "description": "Collect wood, build a workbench, then craft one WoodenDoor.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:craft_workbench_from_trees",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792326075.3696089,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "hold_furnace_again",
+  "description": "Gather missing stone blocks and craft a Furnace.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 12
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792326157.666257,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "cut_one_more_tree_for_wood",
+  "description": "Mine the nearest tree to reach a minimum of 30 Wood in inventory.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792326322.317902,
+  "uses": 1,
+  "successes": 1
+ }
+]

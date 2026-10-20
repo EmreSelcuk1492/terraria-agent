@@ -1,0 +1,177 @@
+[
+ {
+  "name": "cut_multiple_trees_for_wood",
+  "description": "Mine five nearest trees to gather at least 30 Wood blocks",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 5
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792318933.574218,
+  "uses": 20,
+  "successes": 20
+ },
+ {
+  "name": "hold_workbench",
+  "description": "Mine enough wood and craft a WorkBench, then hold it in hand.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:cut_multiple_trees_for_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792318981.429507,
+  "uses": 8,
+  "successes": 8
+ },
+ {
+  "name": "obtain_wooden_hammer",
+  "description": "Gather wood and craft a Wooden Hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:cut_multiple_trees_for_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792319029.040663,
+  "uses": 4,
+  "successes": 4
+ },
+ {
+  "name": "make_wooden_chair_and_table",
+  "description": "Gathers wood, crafts a Wooden Hammer, builds a WorkBench, and then crafts one WoodenChair and one WoodenTable.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_wooden_hammer",
+    "args": {}
+   },
+   {
+    "skill": "lib:hold_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792319175.8128152,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "hold_wooden_door",
+  "description": "Gather wood, build a WorkBench, then craft a Wooden Door.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:cut_multiple_trees_for_wood",
+    "args": {}
+   },
+   {
+    "skill": "lib:hold_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792319228.375935,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "hold_furnace",
+  "description": "Mine stone, get wood, craft a Furnace",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 7
+    }
+   },
+   {
+    "skill": "lib:cut_multiple_trees_for_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792319344.807822,
+  "uses": 2,
+  "successes": 2
+ }
+]

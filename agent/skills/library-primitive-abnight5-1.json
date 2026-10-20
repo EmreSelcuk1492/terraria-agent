@@ -1,0 +1,213 @@
+[
+ {
+  "name": "gather_wood",
+  "description": "Cut three nearby trees to obtain at least 30 Wood.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 3
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792314753.421488,
+  "uses": 16,
+  "successes": 16
+ },
+ {
+  "name": "obtain_workbench",
+  "description": "Gather wood from nearby trees and craft a WorkBench.",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792314799.0966341,
+  "uses": 8,
+  "successes": 8
+ },
+ {
+  "name": "get_wooden_hammer",
+  "description": "Obtain a wooden hammer by gathering wood, building a workbench, then crafting the hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792314844.142117,
+  "uses": 3,
+  "successes": 3
+ },
+ {
+  "name": "gather_stone_blocks",
+  "description": "Mine 30 Stone blocks using the existing Copper Pickaxe.",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792314932.88888,
+  "uses": 3,
+  "successes": 3
+ },
+ {
+  "name": "obtain_chair_and_table_v2",
+  "description": "Collects additional wood, then crafts a wooden chair and a wooden table.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792314993.564002,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "obtain_wooden_door",
+  "description": "Collects wood, builds a workbench if needed, then crafts one WoodenDoor.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "lib:obtain_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792315076.491067,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "cut_one_tree_for_wood",
+  "description": "Mines the closest tree to add at least 5 more Wood, reaching a total of 30.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792315272.9455009,
+  "uses": 1,
+  "successes": 1
+ },
+ {
+  "name": "hold_furnace_with_stone",
+  "description": "Obtain a Furnace by mining StoneBlocks and crafting it with an existing WorkBench.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 20
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792315634.10055,
+  "uses": 1,
+  "successes": 1
+ }
+]

@@ -1,0 +1,234 @@
+[
+ {
+  "name": "gather_wood",
+  "description": "Mine 30 trees to obtain at least 30 Wood.",
+  "task": "Hold at least 30 Wood (any kind: Wood, BorealWood, PalmWood...).",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Trees",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Wood": 30
+   }
+  },
+  "created": 1792479830.072799,
+  "uses": 13,
+  "successes": 13
+ },
+ {
+  "name": "make_workbench",
+  "description": "Gather enough wood and craft a WorkBench",
+  "task": "Hold a work bench (any wood variant counts, e.g. BorealWoodWorkBench).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WorkBench": 1
+   }
+  },
+  "created": 1792479917.883355,
+  "uses": 5,
+  "successes": 5
+ },
+ {
+  "name": "make_wmh",
+  "description": "Gather wood, build a workbench, then craft a wooden hammer.",
+  "task": "Hold a wooden hammer (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenHammer",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenHammer": 1
+   }
+  },
+  "created": 1792480007.484304,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "gather_stone_blocks",
+  "description": "Mine 30 StoneBlock tiles from the surrounding ground.",
+  "task": "Hold at least 30 StoneBlock.",
+  "program": [
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "Stone",
+     "count": 30
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "StoneBlock": 30
+   }
+  },
+  "created": 1792480106.861204,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "make_chair_and_table",
+  "description": "Gather enough wood, create a WorkBench, then craft one WoodenChair and one WoodenTable.",
+  "task": "Hold a wooden chair and a wooden table (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:make_workbench",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenChair",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenTable",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenChair": 1,
+    "WoodenTable": 1
+   }
+  },
+  "created": 1792480210.379922,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "obtain_wooden_door",
+  "description": "Gather wood, build a workbench, then craft a wooden door.",
+  "task": "Hold a wooden door (any wood variant counts).",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WoodenDoor",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "WoodenDoor": 1
+   }
+  },
+  "created": 1792480314.0106199,
+  "uses": 2,
+  "successes": 2
+ },
+ {
+  "name": "craft_furnace",
+  "description": "Craft a Furnace from existing resources",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792480473.106712,
+  "uses": 2,
+  "successes": 1
+ },
+ {
+  "name": "hold_a_furnace_manual",
+  "description": "Gather wood and stone, build a WorkBench, then craft a Furnace.",
+  "task": "Hold a Furnace.",
+  "program": [
+   {
+    "skill": "lib:gather_wood",
+    "args": {}
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "WorkBench",
+     "count": 1
+    }
+   },
+   {
+    "skill": "mine_nearest",
+    "args": {
+     "target": "StoneBlock",
+     "count": 20
+    }
+   },
+   {
+    "skill": "craft",
+    "args": {
+     "item": "Furnace",
+     "count": 1
+    }
+   }
+  ],
+  "check": {
+   "have": {
+    "Furnace": 1
+   }
+  },
+  "created": 1792481674.8833542,
+  "uses": 1,
+  "successes": 1
+ }
+]
