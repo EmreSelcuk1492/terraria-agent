@@ -62,6 +62,21 @@ def _env() -> dict[str, str] | None:
     return out
 
 
+HOME = str(Path.home())
+KEYS = {"lab_projects": "slug", "lab_runs": "id", "lab_results": "run_id,item,attempt", "lab_notes": "project,slug"}
+
+
+def scrub(v: Any) -> Any:
+    """The lab is public: home paths go out as ~ so the Mac's username and folder layout don't."""
+    if isinstance(v, str):
+        return v.replace(HOME, "~")
+    if isinstance(v, list):
+        return [scrub(x) for x in v]
+    if isinstance(v, dict):
+        return {k: scrub(x) for k, x in v.items()}
+    return v
+
+
 class Lab:
     def __init__(self) -> None:
         env = _env()
@@ -75,7 +90,7 @@ class Lab:
     def upsert(self, table: str, rows: list[dict[str, Any]], on: str) -> None:
         if not rows:
             return
-        r = self.http.post(f"/{table}", params={"on_conflict": on}, json=rows)
+        r = self.http.post(f"/{table}", params={"on_conflict": on}, json=scrub(rows))
         if r.status_code >= 300:
             raise RuntimeError(f"{table}: {r.status_code} {r.text[:300]}")
 
@@ -212,6 +227,16 @@ def publish_director_quietly(journal: Path, name: str, host: str) -> None:
         print(f"(lab publish skipped: {e})", flush=True)
 
 
+def scrub_published() -> int:
+    """One-off: rewrite rows already on the lab that still carry a home path. Returns the rows rewritten."""
+    lab, n = Lab(), 0
+    for table, on in KEYS.items():
+        rows = [r for r in lab.http.get(f"/{table}", params={"select": "*"}).json() if HOME in json.dumps(r)]
+        lab.upsert(table, rows, on)
+        n += len(rows)
+    return n
+
+
 def backfill() -> int:
     items: list[tuple[dict, list[dict]]] = []
     for sub, name, host in DIRECTOR:
@@ -233,6 +258,8 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "backfill"
     if cmd == "backfill":
         print(f"published {backfill()} runs + notes")
+    elif cmd == "scrub":
+        print(f"scrubbed {scrub_published()} rows")
     elif cmd == "notes":
         Lab().upsert("lab_notes", notes(), "project,slug")
         print("notes published")
