@@ -7,3 +7,4 @@ bridge/TerrariaAgentBridge/obj/
 *.tmod
 .DS_Store
 *.egg-info/
+.env

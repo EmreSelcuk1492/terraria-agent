@@ -49,6 +49,22 @@ cd agent
 .venv/bin/python -m pytest -q                # offline tests, scripted Claude, no API calls
 ```
 
+## LLM analytics (PostHog)
+
+Every model call, skill call and run goes to PostHog's AI observability (`terraria_agent/telemetry.py`), for all
+backends (Claude, Ollama, OpenAI-compatible), the Director's advisor and the LLM track:
+
+- **Trace** = one agent run, one Director advisor consult, or one LLM-track task. `$ai_is_error` is set when it
+  missed its goal, so failing traces filter out directly.
+- **Generation** = one model call with the full prompt, reply, tool calls, tokens, latency and cost (local models: $0).
+- **Span** = one skill call (or one planned program in the LLM track) with its result, under the generation that asked for it.
+- **Session** = one process (a Director run, one LLM A/B pass). Name it with `TA_SESSION=night4-learned`.
+- Breakdown properties on every event: `track` (agent / director / llm_bench), plus `mode`, `library`, `think` on the LLM track.
+
+Setup: put `POSTHOG_PROJECT_TOKEN=phc_...` and `POSTHOG_HOST=https://us.i.posthog.com` in `agent/.env`
+(gitignored) and `uv pip install -p .venv posthog`. Without a token it warns once and sends nothing;
+`TA_TELEMETRY=0` turns it off; tests never send.
+
 ## The Director: hands-off early game
 
 `python -m terraria_agent.director` plays the first in-game days of a fresh world on its own. A local model is too

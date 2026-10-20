@@ -27,6 +27,7 @@ namespace TerrariaAgentBridge
             "build_room" => new BuildRoom(Int(args, "x"), Int(args, "y"), Int(args, "width", 10), Int(args, "height", 6),
                 Str(args, "block", "Wood"), Str(args, "wall", "WoodWall"), Str(args, "door", "WoodenDoor")),
             "check_house" => new CheckHouse(Int(args, "x"), Int(args, "y")),
+            "close_doors" => new CloseDoors(Int(args, "radius", 12)),
             "equip_best" => new EquipBest(),
             "loot_chests" => new LootChests(Int(args, "radius", 60), Int(args, "max", 10)),
             "store_items" => new StoreItems(StrList(args, "keep")),

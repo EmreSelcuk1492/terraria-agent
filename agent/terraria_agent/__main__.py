@@ -80,6 +80,9 @@ def main() -> int:
 
     if not a.goal:
         ap.error("--goal is required")
+    from . import telemetry
+
+    telemetry.context.update(track="agent")
     agent = Agent(bridge, Memory(a.memory), make_backend(a), log_dir=a.logs, max_cost=a.max_cost, until=a.until,
                   freeze=not a.no_freeze)
     bridge.set_background(True)

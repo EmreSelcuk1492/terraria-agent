@@ -112,7 +112,7 @@ class World:
         return {
             "ok": True,
             "player": self.summary(),
-            "world": {**self.clock(), "blood_moon": False, "biomes": ["forest", "surface"], "spawn": [50, GROUND_Y - 2],
+            "world": {**self.clock(), "blood_moon": False, "raining": self.raining, "biomes": ["forest", "surface"], "spawn": [50, GROUND_Y - 2],
                       "surface_y": GROUND_Y + 10, "rock_layer_y": GROUND_Y + 40, "size": [200, 300], "bosses_defeated": [],
                       "town_npcs": ["Guide" + (" (home)" if self.houses else " (homeless)")], "max_life": self.player["max_hp"],
                       "defense": 2 * len(self.equipment)},
@@ -131,6 +131,8 @@ class World:
         return {"time": f"{int(hours) % 24:02d}:{int(hours % 1 * 60):02d}", "is_day": t < 54000}
 
     # ---- skills ------------------------------------------------------------------------
+
+    raining = False
 
     def skill(self, name: str, a: dict[str, Any]) -> dict[str, Any]:
         fn = getattr(self, f"s_{name}", None)
@@ -458,6 +460,9 @@ class World:
             spawned.append({"npc": n["name"], "index": n["index"], "at": [n["x"], n["y"]]})
         return {"ok": True, "spawned": spawned}
 
+    def s_close_doors(self, radius: int = 12):
+        return True, "no open doors within %d tiles" % radius, 1
+
     def s_wait(self, seconds: float = 1):
         return True, f"waited {seconds}s", int(seconds * 60)
 
@@ -503,6 +508,9 @@ def make_server(port: int = 7979, world: World | None = None) -> ThreadingHTTPSe
                 elif self.path == "/save":
                     world.saves += 1
                     self._send({"ok": True})
+                elif self.path == "/recipe":  # flat stand-in for the bridge's tree
+                    self._send({"ok": True, "item": body.get("item"), "count": body.get("count", 1),
+                                "tree": f"- {body.get('count', 1)} {body.get('item')}: have 0, gather {body.get('count', 1)}"})
                 elif self.path == "/cancel":
                     self._send({"ok": True})
                 else:

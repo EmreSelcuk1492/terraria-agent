@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from . import telemetry
 from .bridge import BridgeClient, BridgeError
 from .tools import TOOLS
 
@@ -197,7 +198,15 @@ def starter_plan() -> list[Step]:
              lambda c, m: [[("obtain", {"item": "Torch", "count": 20})]]),
         Step("home", "Build a home", "a closed, lit, furnished room keeps us safe at night and lets the Guide move in",
              lambda c, m: bool(m.houses),
-             lambda c, m: [[("move_to", {"x": c.world.get("spawn", [0, 0])[0], "y": c.world.get("spawn", [0, 0])[1] - 2, "tolerance": 3}),
+             # Out on top first: spawn can sit in a hollow under the site (the bench seed does), and walking to it
+             # timed out the build. night7 new run 5 got the first home of the A/B this way, on the second try.
+             lambda c, m: [[("return_to_surface", {}), _house("wood", [], False)],
+                           [("move_to", {"x": c.world.get("spawn", [0, 0])[0], "y": c.world.get("spawn", [0, 0])[1] - 2, "tolerance": 3}),
+                            _house("wood", [], False)],
+                           # At the bottom of an old bunker shaft both of those pillar straight up, and the pillar
+                           # failed every time (night7 new run 3: 16 tiles under the site, "could not place
+                           # DirtBlock"). A diagonal tunnel climbs by stairs, no blocks needed; build where it comes out.
+                           [("tunnel_to", {"x": c.player.get("x", 0) + 10, "y": c.player.get("y", 0) - 20, "tolerance": 3}),
                             _house("wood", [], False)],
                            [_house("wood", [], False)]]),
         Step("stone", "Dig for stone", "a furnace needs 20 stone, and stone makes a sturdier workshop",
@@ -280,6 +289,7 @@ class Director:
         self.calls = 0
         self.last_potion = 0.0
         self.dead = False
+        self.deaths: list[float] = []  # wall-clock times, for spotting a respawn death spiral
         self.track = "survival (enemies and damage on)"
         self.publish = False  # main() turns it on: a real run publishes its summary to the lab page
         self.roof: list[tuple[int, int]] = []  # bunker roof tiles from the last dig_in, mined on the way out
@@ -349,9 +359,13 @@ class Director:
                 self.dead = True
                 self.note("Died. Waiting to respawn.", chat=False)
                 self.memo.bump("deaths")
+                self.deaths.append(time.time())
             time.sleep(3)
             return True
-        self.dead = False
+        if self.dead:
+            self.dead = False
+            if self._after_respawn(c):
+                return True
         # Danger starts at half health with enemies around (the mod hands control back there too): at 35% the
         # escape came too late in run 4, three deaths in two minutes with a zombie already on top.
         if c.hp_frac < 0.35 or (c.hp_frac < 0.5 and c.hostiles(12)):
@@ -383,15 +397,51 @@ class Director:
                 close = [n for n in c.hostiles(6) if not n.get("flying")]
                 if close:
                     self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): running from {close[0]['name']} before digging in.", chat=True)
-                    self.call("flee", {"distance": 40})
-                self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): digging in to recover.", chat=True)
-                self._shelter(c, until_hp=0.7)
+                if not close or self._get_clear(c):
+                    self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): digging in to recover.", chat=True)
+                    self._shelter(c, until_hp=0.7)
             return True
         return False
 
-    def _shelter(self, c: Ctx, until_hp: float = 0.8, until_day: bool = False) -> None:
+    def _after_respawn(self, c: Ctx) -> bool:
+        """Recover before going back to work. Respawn lands at spawn, often beside whatever did the killing: four sim
+        runs on 2026-10-18 died 26-42 times an hour, up to four times in two minutes, because the next step started
+        the moment the character stood up (at night, in the rain, at 25-35 hp, into the same zombies)."""
+        now = time.time()
+        spiral = sum(now - t < 360 for t in self.deaths) >= 2
+        night_out = not c.is_day and not c.underground
+        # Only with no walker in sight: at a camped spawn the bunker was a trap. A/B night7 run 1 sheltered 59 times
+        # after a respawn and 3 held; 31 died mid-dig and 23 found no clean spot (spawn was riddled with old holes),
+        # and both arms ran 52-68 deaths an hour against 32 for night5, which had no respawn shelter at all.
+        if [n for n in c.hostiles(15) if not n.get("flying")]:
+            return False
+        if not (spiral or night_out or c.hp_frac < 0.8):
+            return False
+        until_day = night_out or (spiral and not c.is_day)
+        why = "second death in 6 min" if spiral else "night on the surface" if night_out else \
+            f"{c.player.get('hp')}/{c.player.get('max_hp')} hp"
+        self.memo.bump("respawn_shelters")
+        self.note(f"Respawned ({why}): digging in {'until morning' if until_day else 'to recover'} before going back to work.", chat=True)
+        self._shelter(c, until_hp=0.9, until_day=until_day, wait_seconds=120 if spiral else 60)
+        return True
+
+    def _get_clear(self, c: Ctx) -> bool:
+        """Run 40 tiles from walking enemies so there's time to dig a hole. True if we got away. Cornered, stand and
+        fight instead: the hole takes ~7 s, and digging with zombies on top died 15 times in 3 minutes at a walled-in
+        spawn (day6 run 4, 2026-10-18), where the old rule went flee -> cornered -> dig_in -> dead -> respawn."""
+        ok, msg = self.call("flee", {"distance": 40})
+        if ok:
+            return True
+        if not msg.startswith("you are dead"):
+            self.note(f"Cornered ({msg[:80]}): fighting instead of digging in.", chat=True)
+            # Always desperate: hp read before the flee is stale, and a plain attack at 26/120 just answers
+            # "retreating" or LOW HEALTH without a swing (day6 runs 5-6: 13 of 14 cornered fights refused).
+            self.call("attack", {"target": "nearest", "max_kills": 3, "desperate": True})
+        return False
+
+    def _shelter(self, c: Ctx, until_hp: float = 0.8, until_day: bool = False, wait_seconds: int = 60) -> None:
         """No house to hide in: a sealed 2x4 hole under our feet (surface zombies can't dig), wait there."""
-        ok, msg = self.call("dig_in", {"wait_seconds": 600 if until_day else 60, "until_hp": until_hp, "until_day": until_day})
+        ok, msg = self.call("dig_in", {"wait_seconds": 600 if until_day else wait_seconds, "until_hp": until_hp, "until_day": until_day})
         if ok:
             self.roof = [(int(x), int(y)) for x, y in re.findall(r"\((-?\d+), (-?\d+)\)", msg.split("Roof at", 1)[-1])] \
                 if "Roof at" in msg else []
@@ -486,21 +536,33 @@ class Director:
         except Exception:
             text = json.dumps(look)[:4000] if "look" in locals() else ""
         self.advisor.start(ADVISOR_PROMPT, f"Step: {step.title} ({step.why}).\nFailure: {failure}\n\nSurroundings:\n{text}")
+        self.advisor.span_name = "advisor"
+        t_start = time.time()
+
+        def outcome(ok: bool, why: str) -> bool:  # one PostHog trace per consult: did the advice fix the step?
+            telemetry.trace(getattr(self.advisor, "trace_id", None), "director advisor", input={"step": step.title, "failure": failure},
+                            output={"result": why}, latency=time.time() - t_start, error=None if ok else why,
+                            step=step.title)
+            return ok
+
         try:
             turn = self.advisor.step()
         except Exception as e:  # the advisor is optional; never let it stop the run
             self.note(f"(advisor unavailable: {e})")
-            return False
+            return outcome(False, f"advisor unavailable: {e}")
         if not turn.calls:
-            return False
+            return outcome(False, "no tool call")
         call = turn.calls[0]
         if not isinstance(call.args, dict) or call.name in ("observe", "remember"):
-            return False
+            return outcome(False, f"unusable call: {call.name}")
         args = {k: v for k, v in call.args.items() if v is not None}
         self.note(f"Advisor: try {call.name} {json.dumps(args)}")
         self.memo.bump("advisor_fixes")
-        ok, _ = self.call(call.name, args)
-        return ok
+        t0 = time.time()
+        ok, msg = self.call(call.name, args)
+        telemetry.span(getattr(self.advisor, "trace_id", None), call.name, input=args, output=msg, latency=time.time() - t0,
+                       parent_id=getattr(self.advisor, "last_span_id", None), error=None if ok else msg)
+        return outcome(ok, msg)
 
     # -- main loop
 
@@ -655,6 +717,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.start_at:
         bridge.set_time(a.start_at)
     bridge.set_sandbox(a.peaceful, a.peaceful)  # always set: the mod keeps the last value until the game restarts
+    telemetry.context.update(track="director", peaceful=a.peaceful, bridge=a.bridge)
     d = Director(bridge, make_advisor(a.advisor, a.model), memo_dir=a.runs_dir, say_in_game=not a.quiet_chat)
     d.publish = True
     if a.peaceful:

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import telemetry
 from .backends import Backend, Call, Turn
 from .bridge import BridgeClient
 from .memory import Memory
@@ -158,6 +159,8 @@ class Agent:
                     t0 = time.time()
                     text, err = self.tools.run(call.name, call.args)
                     stats.game_seconds += time.time() - t0
+                    telemetry.span(getattr(self.backend, "trace_id", None), call.name, input=call.args, output=text,
+                                   latency=time.time() - t0, parent_id=getattr(self.backend, "last_span_id", None), error=text if err else None)
                 stats.failures += int(err)
                 if call.name in ("check_house", "build_house"):
                     self.verified = not err
@@ -182,6 +185,12 @@ class Agent:
             self._log("verified", ok=self.verified, check=self.last_check)
         self._say(f"\ndone: {stats.line()}")
         self._log("end", stats=stats.line())
+        telemetry.trace(getattr(self.backend, "trace_id", None), "agent run", input={"goal": goal}, output={"summary": stats.line()},
+                        latency=time.time() - stats.started,
+                        error=("not verified: " + self.last_check) if self.until and not self.verified else None,
+                        backend=self.backend.name, goal=goal, until=self.until, verified=self.verified if self.until else None,
+                        turns=stats.turns, tool_calls=stats.tool_calls, tool_failures=stats.failures,
+                        cost_usd=round(stats.cost, 4), max_turns_hit=stats.turns >= max_turns)
         return stats
 
 

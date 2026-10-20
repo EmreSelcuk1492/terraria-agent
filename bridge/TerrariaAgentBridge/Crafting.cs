@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Terraria;
+using Terraria.ID;
+using Terraria.ModLoader;
 
 namespace TerrariaAgentBridge
 {
@@ -140,6 +142,87 @@ namespace TerrariaAgentBridge
                     return $"craft: {Game.ItemName(itemType)}{(r.createItem.stack > 1 ? " x" + r.createItem.stack : "")} = {Describe(r)}";
             }
             return "not craftable; gather it";
+        }
+
+        /// <summary>
+        /// The whole ingredient tree for `count` of `type` against what the player holds: every intermediate, every
+        /// station (and what it takes to make one), and the raw totals to gather. LLM track copper_bars failed 28/28
+        /// (2026-10-16/18) planning from one recipe at a time: 3 ore for 3 bars, then no Furnace, then no WorkBench.
+        /// </summary>
+        public static string Tree(Player p, int type, int count)
+        {
+            RefreshStations(p);
+            var pool = new Dictionary<int, int>();  // what's left to use: one branch's wood isn't counted again by the next
+            for (int i = 0; i < 58; i++)
+            {
+                Item it = p.inventory[i];
+                if (!it.IsAir) pool[it.type] = pool.GetValueOrDefault(it.type) + it.stack;
+            }
+            var lines = new List<string>();
+            var raw = new Dictionary<int, int>();
+            Need(p, new HashSet<int> { type }, type, count, 0, pool, lines, raw, new HashSet<int>());
+            lines.Add("Gather in total: " + (raw.Count == 0 ? "nothing, you hold everything"
+                : string.Join(", ", raw.Select(kv => $"{kv.Value} {Game.ItemName(kv.Key)}{GatherHint(kv.Key)}"))));
+            return string.Join("\n", lines);
+        }
+
+        private static void Need(Player p, HashSet<int> accepted, int type, int n, int depth, Dictionary<int, int> pool,
+                                 List<string> lines, Dictionary<int, int> raw, HashSet<int> stations)
+        {
+            string pad = new string(' ', depth * 2), name = Game.ItemName(type);
+            int have = 0;
+            foreach (int t in accepted)
+            {
+                int take = System.Math.Min(pool.GetValueOrDefault(t), n - have);
+                if (take > 0) { pool[t] -= take; have += take; }
+            }
+            int missing = n - have;
+            if (missing <= 0) { lines.Add($"{pad}- {n} {name}: have them"); return; }
+            Recipe r = depth < 6 ? RecipesFor(type).FirstOrDefault(x => !Reverses(x, type)) : null;
+            if (r == null)
+            {
+                lines.Add($"{pad}- {n} {name}: have {have}, gather {missing}{GatherHint(type)}");
+                raw[type] = raw.GetValueOrDefault(type) + missing;
+                return;
+            }
+            int batches = (missing + r.createItem.stack - 1) / r.createItem.stack;
+            lines.Add($"{pad}- {n} {name}: have {have}, craft {missing}: {batches} x [{Describe(r)}]");
+            foreach (int t in r.requiredTile.Where(t => t >= 0))
+            {
+                if (!stations.Add(t)) continue;  // one station serves every recipe that needs it
+                if (p.adjTile[t]) { lines.Add($"{pad}  - station {Game.TileName(t)}: you are next to one"); continue; }
+                int item = StationItem(t, pool);
+                if (item <= 0) { lines.Add($"{pad}  - station {Game.TileName(t)}: none nearby; find one"); continue; }
+                lines.Add($"{pad}  - station {Game.TileName(t)}: none nearby; craft places one if you hold a {Game.ItemName(item)}:");
+                Need(p, new HashSet<int> { item }, item, 1, depth + 2, pool, lines, raw, stations);
+            }
+            foreach (Item ing in r.requiredItem.Where(i => !i.IsAir))
+                Need(p, Accepted(r, ing), ing.type, ing.stack * batches, depth + 1, pool, lines, raw, stations);
+        }
+
+        /// <summary>A recipe that undoes one of its own ingredients' recipes (StoneBlock from StoneWall, Wood from WoodWall).</summary>
+        private static bool Reverses(Recipe r, int type) => r.requiredItem.Any(ing => !ing.IsAir &&
+            RecipesFor(ing.type).Any(back => back.requiredItem.Any(x => !x.IsAir && x.type == type)));
+
+        /// <summary>An item that places station tile `tile`: one the player holds, else the first craftable one.</summary>
+        private static int StationItem(int tile, Dictionary<int, int> pool)
+        {
+            foreach (var kv in pool)
+                if (kv.Value > 0 && ContentSamples.ItemsByType.TryGetValue(kv.Key, out var s) && s.createTile == tile) return kv.Key;
+            for (int t = 1; t < ItemLoader.ItemCount; t++)
+                if (ContentSamples.ItemsByType.TryGetValue(t, out var s) && s.createTile == tile && RecipesFor(t).Count > 0) return t;
+            return -1;
+        }
+
+        private static string GatherHint(int type)
+        {
+            string name = Game.ItemName(type);
+            if (name == "Wood") return " (mine_nearest Trees)";
+            if (name == "Gel") return " (kill slimes)";
+            if (ContentSamples.ItemsByType.TryGetValue(type, out var s) && s.createTile >= 0)
+                return s.createTile == TileID.Stone ? " (mine_nearest StoneBlock; dig_down to Stone first if none is in reach)"
+                    : $" (mine_nearest {name}{(TileID.Sets.Ore[s.createTile] ? "; ore is underground, dig_down to it" : "")})";
+            return "";
         }
 
         public static string Describe(Recipe r) =>

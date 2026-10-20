@@ -99,6 +99,7 @@ namespace TerrariaAgentBridge
                 ["time"] = $"{(int)hours:00}:{(int)((hours % 1) * 60):00}",
                 ["is_day"] = Main.dayTime,
                 ["blood_moon"] = Main.bloodMoon,
+                ["raining"] = Main.raining,   // rain spawns zombies in daylight (night7 run 9 died 67 times in it)
                 ["biomes"] = biomes,
                 ["spawn"] = new[] { Main.spawnTileX, Main.spawnTileY },
                 ["surface_y"] = (int)Main.worldSurface,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,70 @@ def test_low_health_flier_digs_in_instead_of_fighting(world_and_bridge, tmp_path
     d.call = lambda name, args: (calls.append(name), real(name, args))[1]
     assert d.safety(d.observe())
     assert calls[0] == "dig_in"
+
+
+def _record(d):
+    calls = []
+    d.call = lambda name, args: (calls.append((name, args)), (True, "dug in at (1,2). Roof at (1, 1) (2, 1): mine it"))[1]
+    return calls
+
+
+def test_respawn_at_night_digs_in_until_morning(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.ticks = 54000  # dusk
+    world.npcs = []
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = _record(d)
+    d.dead = True  # the previous poll saw the death; this one sees the respawned player
+    assert d.safety(d.observe())
+    assert calls == [("dig_in", {"wait_seconds": 600, "until_hp": 0.9, "until_day": True})]
+    assert d.memo.stats.get("respawn_shelters") == 1
+
+
+def test_second_death_in_minutes_shelters_longer(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.npcs = []
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = _record(d)
+    d.dead, d.deaths = True, [time.time() - 100, time.time() - 20]
+    assert d.safety(d.observe())
+    assert [n for n, _ in calls] == ["dig_in"]
+    assert calls[0][1]["wait_seconds"] == 120 and not calls[0][1]["until_day"]
+
+
+def test_respawn_beside_a_zombie_skips_the_bunker(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.npcs = [{"name": "Zombie", "x": world.player["x"] + 3, "y": world.player["y"], "hp": 45, "max_hp": 45,
+                   "hostile": True, "boss": False}]
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = _record(d)
+    d.dead, d.deaths = True, [time.time() - 100, time.time() - 20]
+    assert not d.safety(d.observe())  # digging in beside it died 31 of 59 times (night7 run 1)
+    assert calls == []
+
+
+def test_safe_respawn_goes_straight_back_to_work(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.npcs = []
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = _record(d)
+    d.dead = True
+    assert not d.safety(d.observe())  # day, full health, nothing near: no reason to hide
+    assert calls == [] and not d.dead
+
+
+def test_cornered_at_low_health_fights_instead_of_digging(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.player["hp"] = 30
+    world.npcs = [{"name": "Zombie", "x": world.player["x"] + 5, "y": world.player["y"], "hp": 45, "max_hp": 45,
+                   "hostile": True, "boss": False}]
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    calls = []
+    replies = {"flee": (False, "cornered at (2101,255): can't run further east. Fight (attack desperate=true) or dig_in."),
+               "attack": (True, "killed 1; no more targets nearby")}
+    d.call = lambda name, args: (calls.append((name, args)), replies.get(name, (True, "")))[1]
+    assert d.safety(d.observe())
+    assert [n for n, _ in calls] == ["flee", "attack"], "no dig_in with a zombie on top (day6 run 4)"
+    assert calls[1][1]["desperate"], "a plain attack at low health refuses without a swing (day6 runs 5-6)"
+
+

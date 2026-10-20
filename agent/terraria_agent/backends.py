@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
+from . import telemetry
 from .tools import TOOLS, tool_result
 
 
@@ -42,6 +44,10 @@ class Backend:
     model = ""
     # $ per million tokens: input, output, cache read, cache write
     price = (0.0, 0.0, 0.0, 0.0)
+    # PostHog: start() opens a new trace; each step() is a generation in it (see telemetry.py).
+    trace_id: str | None = None
+    last_span_id: str | None = None
+    span_name = "turn"
 
     def start(self, system: str, first_user: str) -> None:
         raise NotImplementedError
@@ -87,6 +93,7 @@ class ClaudeBackend(Backend):
     def start(self, system: str, first_user: str) -> None:
         self.system = system
         self.messages = [{"role": "user", "content": first_user}]
+        self.trace_id = telemetry.new_id()
 
     def step(self) -> Turn:
         kwargs: dict[str, Any] = dict(
@@ -111,7 +118,16 @@ class ClaudeBackend(Backend):
         )
         if "haiku" not in self.model:  # Haiku has no server-side fallback
             kwargs["fallbacks"] = "default"
-        r = self.client.beta.messages.create(**kwargs)
+        sent = [{"role": "system", "content": self.system}, *self.messages] if telemetry.enabled() else []
+        self.last_span_id = telemetry.new_id()
+        t0 = time.time()
+        try:
+            r = self.client.beta.messages.create(**kwargs)
+        except Exception as e:
+            telemetry.generation(self.trace_id, provider="anthropic", model=self.model, messages=sent, output=[],
+                                 latency=time.time() - t0, span_id=self.last_span_id, span_name=self.span_name, error=e)
+            raise
+        latency = time.time() - t0
 
         u = r.usage
         turn = Turn(
@@ -121,6 +137,12 @@ class ClaudeBackend(Backend):
             cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
             cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
         )
+        telemetry.generation(self.trace_id, provider="anthropic", model=getattr(r, "model", None) or self.model,
+                             messages=sent, output=[{"role": "assistant", "content": r.content}], latency=latency,
+                             input_tokens=turn.input_tokens, output_tokens=turn.output_tokens, cache_read=turn.cache_read,
+                             cache_write=turn.cache_write, price=self.price, stop=r.stop_reason, tools=TOOLS,
+                             span_id=self.last_span_id, span_name=self.span_name, effort=self.effort,
+                             error="refusal" if r.stop_reason == "refusal" else None)
         if r.stop_reason == "refusal":
             turn.texts.append(f"(declined: {getattr(r, 'stop_details', None)})")
             return turn
@@ -176,6 +198,15 @@ class _ChatBackend(Backend):
         if self.no_think:
             system += "\n/no_think"  # Qwen3 soft switch; harmless elsewhere
         self.messages = [{"role": "system", "content": system}, {"role": "user", "content": first_user}]
+        self.trace_id = telemetry.new_id()
+
+    def _report(self, provider: str, base_url: str, sent: list[dict[str, Any]], msg: dict[str, Any] | None,
+                turn: Turn | None, latency: float, stop: str | None = None, error: Any = None) -> None:
+        telemetry.generation(self.trace_id, provider=provider, model=self.model, messages=sent,
+                             output=[msg] if msg else [], latency=latency, base_url=base_url,
+                             input_tokens=turn.input_tokens if turn else 0, output_tokens=turn.output_tokens if turn else 0,
+                             price=self.price, stop=stop, tools=_openai_tools(), span_id=self.last_span_id,
+                             span_name=self.span_name, error=error)
 
     def _view(self) -> list[dict[str, Any]]:
         tool_idx = [i for i, m in enumerate(self.messages) if m["role"] == "tool"]
@@ -257,14 +288,23 @@ class OllamaBackend(_ChatBackend):
             "keep_alive": self.KEEP_ALIVE,
             "options": {"num_ctx": self.num_ctx, "temperature": 0.6, "num_predict": self.max_output},
         }
-        for attempt in range(self.RETRIES):
-            r = self.http.post("/api/chat", json=body)
-            if r.status_code < 500 or attempt == self.RETRIES - 1:
-                break
-        r.raise_for_status()
+        self.last_span_id = telemetry.new_id()
+        base = str(self.http.base_url)
+        t0 = time.time()
+        try:
+            for attempt in range(self.RETRIES):
+                r = self.http.post("/api/chat", json=body)
+                if r.status_code < 500 or attempt == self.RETRIES - 1:
+                    break
+            r.raise_for_status()
+        except Exception as e:
+            self._report("ollama", base, body["messages"], None, None, time.time() - t0, error=e)
+            raise
         data = r.json()
         msg = data["message"]
         turn = Turn(input_tokens=data.get("prompt_eval_count", 0), output_tokens=data.get("eval_count", 0))
+        self._report("ollama", base, body["messages"], msg, turn, time.time() - t0, stop=data.get("done_reason"),
+                     error=data.get("error"))
         text = _THINK.sub("", msg.get("content") or "").strip()
         if text:
             turn.texts.append(text)
@@ -304,19 +344,28 @@ class OpenAIBackend(_ChatBackend):
         self.http = httpx.Client(base_url=base_url.rstrip("/"), headers=headers, timeout=timeout)
 
     def step(self) -> Turn:
-        r = self.http.post("/chat/completions", json={
-            "model": self.model,
-            "messages": self._view(),
-            "tools": _openai_tools(),
-            "tool_choice": "auto",
-            "max_tokens": 4096,
-        })
-        r.raise_for_status()
+        sent = self._view()
+        self.last_span_id = telemetry.new_id()
+        base = str(self.http.base_url)
+        t0 = time.time()
+        try:
+            r = self.http.post("/chat/completions", json={
+                "model": self.model,
+                "messages": sent,
+                "tools": _openai_tools(),
+                "tool_choice": "auto",
+                "max_tokens": 4096,
+            })
+            r.raise_for_status()
+        except Exception as e:
+            self._report("openai", base, sent, None, None, time.time() - t0, error=e)
+            raise
         data = r.json()
         choice = data["choices"][0]
         msg = choice["message"]
         usage = data.get("usage") or {}
         turn = Turn(input_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("completion_tokens", 0))
+        self._report("openai", base, sent, msg, turn, time.time() - t0, stop=choice.get("finish_reason"))
         text = _THINK.sub("", msg.get("content") or "").strip()
         if text:
             turn.texts.append(text)

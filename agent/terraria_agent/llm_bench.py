@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -29,6 +30,7 @@ from typing import Any
 
 import httpx
 
+from . import telemetry
 from .bridge import BridgeClient, BridgeError, exclusive
 from .director import ROOT
 from .lab import publish_quietly
@@ -108,6 +110,8 @@ class OllamaPlanner:
         self.seconds = 0.0
         self.tokens = 0
         self.empty = 0
+        self.trace_id: str | None = None  # PostHog: run_task opens one trace per task
+        self.last_span_id: str | None = None
 
     def plan(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         t0 = time.time()
@@ -122,7 +126,22 @@ class OllamaPlanner:
         for retry in range(3):
             if retry:
                 body["options"] = {**body["options"], "temperature": 0.2 + 0.3 * retry}
-            r = self.http.post("/api/chat", json=body).json()
+            self.last_span_id = telemetry.new_id()
+            t_call = time.time()
+            try:
+                r = self.http.post("/api/chat", json=body).json()
+            except Exception as e:
+                telemetry.generation(self.trace_id, provider="ollama", model=self.model, messages=messages, output=[],
+                                     latency=time.time() - t_call, base_url=str(self.http.base_url),
+                                     span_id=self.last_span_id, span_name="planner", error=e)
+                raise
+            telemetry.generation(self.trace_id, provider="ollama", model=self.model, messages=messages,
+                                 output=[r["message"]] if r.get("message") else [], latency=time.time() - t_call,
+                                 input_tokens=int(r.get("prompt_eval_count", 0)), output_tokens=int(r.get("eval_count", 0)),
+                                 stop=r.get("done_reason"), base_url=str(self.http.base_url), span_id=self.last_span_id,
+                                 span_name="planner", retry=retry, think=self.think,
+                                 error=r.get("error") or (None if (r.get("message") or {}).get("content", "").strip()
+                                                          else "empty reply"))
             self.calls += 1
             self.tokens += int(r.get("eval_count", 0)) + int(r.get("prompt_eval_count", 0))
             if "error" in r:
@@ -163,6 +182,29 @@ program: an ordered list of skill calls that, run one after another, achieves th
 Skills:
 {menu}
 """
+
+
+def goal_items(check: dict[str, Any]) -> list[tuple[str, int]]:
+    if "any" in check:
+        return [it for c in check["any"] for it in goal_items(c)]
+    return list(check.get("have", {}).items())
+
+
+def recipe_text(check: dict[str, Any], bridge: BridgeClient) -> str:
+    """The ingredient tree for every goal item against the current inventory (bridge /recipe). copper_bars failed
+    28/28 over two nights planning from single recipes: 3 ore for 3 bars, no Furnace, no WorkBench for the Furnace."""
+    trees = []
+    for item, n in goal_items(check):
+        try:
+            r = bridge.recipe(item, n)
+        except BridgeError:
+            return ""
+        if r.get("ok") and r.get("tree"):
+            trees.append(f"{n} {item}:\n{r['tree']}")
+    if not trees:
+        return ""
+    return ("\nRecipe book (computed from the game's recipes and your inventory; plan for these totals; "
+            "\"any\" goals list each option, do one):\n" + "\n\n".join(trees) + "\n")
 
 
 def state_text(st: dict[str, Any]) -> str:
@@ -249,7 +291,7 @@ _SKILLS = {t["name"] for t in TOOLS}
 
 
 def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: SkillLibrary | None, mode: str,
-             attempts: int, use_library: bool, start: dict[str, Any]) -> TaskResult:
+             attempts: int, use_library: bool, start: dict[str, Any], recipes: bool = True) -> TaskResult:
     setup = {**start, "give": task.give} if task.give else start
     for _ in range(30):  # a death in the previous task: wait out the respawn
         if not bridge.state().get("player", {}).get("dead"):
@@ -259,13 +301,15 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
     if not r.get("ok"):
         raise BridgeError(r.get("error", "setup failed"))
     calls0, secs0 = planner.calls, planner.seconds
+    planner.trace_id, t_task = telemetry.new_id(), time.time()
     ex = Executor(bridge, library if use_library else None, mode)
     ex.log.append(f"start {r.get('at')}, {r.get('trees', '?')} trees within 30 tiles")
     hits = library.search(f"{task.name} {task.goal} {json.dumps(task.check)}") if (library and use_library) else []
     lib_text = "\n".join(s.summary() for s in hits) or "(empty)"
     messages = [{"role": "system", "content": SYSTEM.replace("{menu}", skill_menu(mode))},
                 {"role": "user", "content": f"Task: {task.goal}\nGoal check (verified against your inventory): {json.dumps(task.check)}\n"
-                                            f"Library skills you can call:\n{lib_text}\n\nState:\n{state_text(bridge.state())}"}]
+                                            f"Library skills you can call:\n{lib_text}\n\nState:\n{state_text(bridge.state())}"
+                                            f"{recipe_text(task.check, bridge) if recipes else ''}"}]
     program: list[dict[str, Any]] = []
     plan: dict[str, Any] = {}
     for attempt in range(1, attempts + 1):
@@ -276,15 +320,22 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
             continue
         program = plan.get("program") or []
         ex.log.append(f"attempt {attempt}: {plan.get('name')}: {json.dumps(program)[:600]}")
+        t0 = time.time()
         ok, msg = ex.run(program)
         st = bridge.state()
-        if ok and verify(task.check, inventory(st)):
+        met = ok and verify(task.check, inventory(st))
+        telemetry.span(planner.trace_id, f"program: {plan.get('name')}", input={"program": program},
+                       output={"message": msg, "inventory": dict(inventory(st))}, latency=time.time() - t0,
+                       parent_id=getattr(planner, "last_span_id", None), error=None if met else (msg if not ok else "goal check not met"),
+                       attempt=attempt)
+        if met:
             saved = None
             located = any(k in (st.get("args") or {}) for st in program for k in ("x", "y"))
             if located:
                 ex.log.append("  (passed, not saved: the program uses absolute coordinates, which don't generalise)")
             if library is not None and use_library and not located and not (len(program) == 1 and program[0]["skill"].startswith("lib:")):
                 saved = library.add(plan.get("name") or task.name, plan.get("description") or task.goal, task.goal, program, task.check).name
+            _task_trace(planner, task, t_task, True, attempt, ex, saved)
             return TaskResult(task.name, True, attempt, planner.calls - calls0, round(planner.seconds - secs0, 1),
                               round(ex.game_seconds, 1), ex.skill_calls, ex.used, saved, program, ex.log)
         why = msg if not ok else f"the program finished but the goal check {json.dumps(task.check)} is not met"
@@ -297,9 +348,20 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
                    "This task is possible from here with the skills listed: write the steps that gather, craft and place what it needs")
         ex.log.append(f"  -> {why[:300]}")
         messages += [{"role": "assistant", "content": json.dumps(plan)},
-                     {"role": "user", "content": f"That did not work: {why}\n\nState now:\n{state_text(st)}\n\nWrite a corrected program."}]
+                     {"role": "user", "content": f"That did not work: {why}\n\nState now:\n{state_text(st)}\n"
+                                                 f"{recipe_text(task.check, bridge) if recipes else ''}\nWrite a corrected program."}]
+    _task_trace(planner, task, t_task, False, attempts, ex, None)
     return TaskResult(task.name, False, attempts, planner.calls - calls0, round(planner.seconds - secs0, 1),
                       round(ex.game_seconds, 1), ex.skill_calls, ex.used, None, program, ex.log)
+
+
+def _task_trace(planner: OllamaPlanner, task: Task, t0: float, passed: bool, attempts: int, ex: Executor,
+                saved: str | None) -> None:
+    """One PostHog trace per task; filter on `task` and `passed` to compare passes (fresh vs learned...)."""
+    telemetry.trace(planner.trace_id, f"task: {task.name}", input={"goal": task.goal, "check": task.check},
+                    output={"passed": passed, "log": ex.log[-20:]}, latency=time.time() - t0,
+                    error=None if passed else "goal check not met", task=task.name, passed=passed, attempts=attempts,
+                    used_library=ex.used, saved_as=saved)
 
 
 # Skills that change nothing in the world: a program of only these is giving up.
@@ -364,6 +426,8 @@ def main(argv: list[str] | None = None) -> int:
                          "(sim/llm_ab.sh passes sim/run.sh ... --fresh): every task starts on the same uncut forest")
     ap.add_argument("--speed", type=int, default=1, help="fast-forward: k game ticks per frame (timings are game time)")
     ap.add_argument("--headless", action="store_true", help="skip drawing (sim containers)")
+    ap.add_argument("--no-recipes", dest="recipes", action="store_false",
+                    help="leave the recipe book (full ingredient tree per goal item) out of the prompt")
     a = ap.parse_args(argv)
     lock = exclusive(a.bridge)  # noqa: F841 (held for the whole run)
     lib_path = a.library_path or ROOT / "skills" / f"library-{a.mode}.json"
@@ -391,9 +455,12 @@ def main(argv: list[str] | None = None) -> int:
         planner.plan = narrated
     tasks = [t for t in TASKS if not a.only or t.name in a.only]
     out = ROOT / "runs" / "llm" / f"{time.strftime('%Y%m%d-%H%M%S')}-{a.mode}-{a.library}"
+    telemetry.session_id = os.environ.get("TA_SESSION") or f"llm-{out.name}"  # one session per pass
+    telemetry.context.update(track="llm_bench", mode=a.mode, library=a.library, think=a.think, speed=a.speed, recipes=a.recipes,
+                             library_size_at_start=len(library.skills) if library else 0)
     meta = {"model": a.model, "think": a.think, "mode": a.mode, "library": a.library, "attempts": a.attempts,
             "library_path": str(lib_path), "bridge": a.bridge, "sim": sim, "world_reset_per_task": bool(a.reset_world),
-            "library_size_at_start": len(library.skills) if library else 0}
+            "library_size_at_start": len(library.skills) if library else 0, "recipes": a.recipes}
     results = []
     for i, t in enumerate(TASKS):
         if t not in tasks:
@@ -405,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             place = {**start, "surface_at": patch(i, a.start_dx), "min_trees": 10}
         try:
-            r = run_task(t, bridge, planner, library, a.mode, a.attempts, a.library != "off", place)
+            r = run_task(t, bridge, planner, library, a.mode, a.attempts, a.library != "off", place, a.recipes)
         except BridgeError as e:
             r = TaskResult(t.name, False, 0, 0, 0, 0, 0, [], None, [], [], str(e))
         results.append(r)

@@ -18,6 +18,7 @@ namespace TerrariaAgentBridge
     ///
     ///   GET  /health           -> { ok, version, in_world }
     ///   GET  /state            -> observation (see Observation.cs)
+    ///   POST /recipe {item, count} -> full ingredient tree against the inventory (Crafting.Tree)
     ///   POST /skill  {name, args}  -> blocks until the skill finishes -> { ok, message, ticks, player, inventory }
     ///   POST /cancel           -> stops the running skill
     ///   POST /config {freeze}  -> freeze the world while no skill is running
@@ -230,6 +231,19 @@ namespace TerrariaAgentBridge
                 case "GET /state":
                     if (!InWorld) return Error("not in a world");
                     return await OnMainThread(() => Observation.Build(Main.LocalPlayer));
+
+                case "POST /recipe":
+                {
+                    // {"item": "CopperBar", "count": 3} -> the full ingredient tree against the inventory (Crafting.Tree)
+                    if (!InWorld) return Error("not in a world");
+                    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    string item = doc.RootElement.TryGetProperty("item", out var it) ? it.GetString() ?? "" : "";
+                    int count = doc.RootElement.TryGetProperty("count", out var cn) && cn.TryGetInt32(out int n) ? Math.Max(1, n) : 1;
+                    int type = Game.ResolveItem(item);
+                    if (type <= 0) return Error($"unknown item '{item}'");
+                    return await OnMainThread(() => new Dictionary<string, object>
+                        { ["ok"] = true, ["item"] = Game.ItemName(type), ["count"] = count, ["tree"] = Crafting.Tree(Main.LocalPlayer, type, count) });
+                }
 
                 case "POST /config":
                 {

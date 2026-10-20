@@ -75,6 +75,10 @@ class BridgeClient:
         """Starts a skill and blocks until it finishes in game."""
         return self._post("/skill", {"name": name, "args": args})
 
+    def recipe(self, item: str, count: int = 1) -> dict[str, Any]:
+        """The full ingredient tree for `count` of `item` against the inventory: intermediates, stations, raw totals."""
+        return self._post("/recipe", {"item": item, "count": count})
+
     def cancel(self) -> dict[str, Any]:
         return self._post("/cancel", {})
 

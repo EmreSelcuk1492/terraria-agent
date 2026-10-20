@@ -85,3 +85,23 @@ def test_programs_with_coordinates_are_not_saved(tmp_path):
                            {"fresh_player": True})
     assert r.passed and r.saved_as is None and not lib.skills
     server.shutdown()
+
+
+def test_recipe_book_covers_every_goal_option():
+    _, server, bridge = _bridge()
+    check = {"any": [{"have": {"CopperBar": 3}}, {"have": {"TinBar": 3}}]}
+    assert llm_bench.goal_items(check) == [("CopperBar", 3), ("TinBar", 3)]
+    text = llm_bench.recipe_text(check, bridge)
+    assert "Recipe book" in text and "3 CopperBar:" in text and "3 TinBar:" in text
+    server.shutdown()
+
+
+def test_prompt_carries_the_recipe_book_unless_turned_off(tmp_path):
+    for recipes in (True, False):
+        _, server, bridge = _bridge()
+        planner = ScriptedPlanner([{"thought": "", "name": "wood", "description": "wood",
+                                    "program": [{"skill": "mine_nearest", "args": {"target": "Trees", "count": 12}}]}])
+        task = llm_bench.Task("wood", "Hold 30 Wood.", {"have": {"Wood": 30}})
+        llm_bench.run_task(task, bridge, planner, None, "primitive", 1, False, {}, recipes=recipes)
+        assert ("Recipe book" in planner.seen[0]) == recipes
+        server.shutdown()

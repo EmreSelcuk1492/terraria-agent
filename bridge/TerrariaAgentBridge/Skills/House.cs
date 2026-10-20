@@ -25,7 +25,8 @@ namespace TerrariaAgentBridge.Skills
         private bool planned;
         private readonly Queue<(string kind, int x, int y)> work = new();
         private Skill walk;
-        private int cooldown, skipped;
+        private (int x, int y) walkTo;
+        private int cooldown, skipped, walkFails, idleWalks;
         private readonly Dictionary<(int, int), int> retries = new();
 
         public BuildRoom(int x, int y, int width, int height, string block, string wall, string door)
@@ -50,7 +51,30 @@ namespace TerrariaAgentBridge.Skills
 
             if (walk != null)
             {
+                // The tunnel's own budget (240 s) outlasts ours: from spawn in a hollow under the site (A/B night7
+                // run 1) it ate the whole 120 s. 30 s of digging is plenty for a site in sight; past that, say so.
+                if (walk is TunnelTo && walk.Ticks > 60 * 30)
+                {
+                    Fail($"can't reach the house site ({x},{y}) from ({(int)(p.Center.X / 16)},{(int)(p.Center.Y / 16)}): 30 s of tunnelling got nowhere. " +
+                         "Climb out (return_to_surface) or build somewhere you can stand (give x, y)");
+                    return;
+                }
                 if (Step(walk, p)) return;
+                // A walk that fails just got re-queued every tick until the 120 s timeout: in sim runs (2026-10-18) the
+                // character stood in its own dig_in pit 8 tiles below the site, and the home step timed out 4-6 times a
+                // run (3 homes in 9 runs). Tunnel/pillar there instead, and give up fast if that fails too.
+                if (walk.Ok) walkFails = 0;
+                else if (++walkFails <= 2)
+                {
+                    walk = new TunnelTo(walkTo.x, walkTo.y, 2);
+                    return;
+                }
+                else
+                {
+                    Fail($"can't reach the house site ({x},{y}) from ({(int)(p.Center.X / 16)},{(int)(p.Center.Y / 16)}): {walk.Message}. " +
+                         "Climb out (return_to_surface) or build somewhere you can stand (give x, y)");
+                    return;
+                }
                 walk = null;
             }
             if (cooldown-- > 0) return;
@@ -65,7 +89,7 @@ namespace TerrariaAgentBridge.Skills
             var (kind, i, j) = work.Peek();
             if (!Game.InReach(p, i, j, 0))
             {
-                walk = new MoveTo(Math.Clamp(i, x + 1, Right - 1), y - 2, 2);
+                walk = WalkTo(Math.Clamp(i, x + 1, Right - 1), y - 2, 2);
                 return;
             }
             AgentPlayer.Aim = new Vector2(i * 16 + 8, j * 16 + 8);
@@ -74,6 +98,7 @@ namespace TerrariaAgentBridge.Skills
 
             if (Do(p, kind, i, j))
             {
+                idleWalks = 0;
                 work.Dequeue();
                 return;
             }
@@ -84,7 +109,7 @@ namespace TerrariaAgentBridge.Skills
             if (tries < 4)
             {
                 work.Enqueue((kind, i, j));
-                walk = new MoveTo(x + w / 2, y - 2, 1);
+                walk = WalkTo(x + w / 2, y - 2, 1);
             }
             else skipped++;
         }
@@ -165,8 +190,18 @@ namespace TerrariaAgentBridge.Skills
             foreach (var c in frame.OrderByDescending(c => c.Item2).ThenBy(c => c.Item1)) work.Enqueue(("block", c.Item1, c.Item2));
             foreach (var c in walls.OrderByDescending(c => c.Item2)) work.Enqueue(("wall", c.Item1, c.Item2));
             work.Enqueue(("door", Right, y - 2));
-            walk = new MoveTo(x + w / 2, y - 2, 1);
+            walk = WalkTo(x + w / 2, y - 2, 1);
             return true;
+        }
+
+        private Skill WalkTo(int tx, int ty, int tolerance)
+        {
+            // Walks that "arrive" but never put the tile in reach still ran out the clock (night7 new run 5).
+            if (++idleWalks > 12)
+                Fail($"can't get within reach of the house site ({x},{y}): 12 walks without placing a tile. " +
+                     "Climb out (return_to_surface) or build somewhere you can stand (give x, y)");
+            walkTo = (tx, ty);
+            return new MoveTo(tx, ty, tolerance);
         }
 
         private bool Do(Player p, string kind, int i, int j)
@@ -228,6 +263,40 @@ namespace TerrariaAgentBridge.Skills
                 }
             }
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Shut every open door within `radius` tiles that no one stands in. Walking through a door opens it and nothing
+    /// shut it again: in a sim test (2026-10-19) four zombies and a Demon Eye walked into a finished house at dusk.
+    /// </summary>
+    public class CloseDoors : Skill
+    {
+        public override string Name => "close_doors";
+        private readonly int radius;
+        public CloseDoors(int radius) { this.radius = Math.Clamp(radius, 2, 30); }
+
+        public override void Tick(Player p)
+        {
+            int px = (int)(p.Center.X / 16), py = (int)(p.Center.Y / 16), closed = 0, blocked = 0;
+            var seen = new HashSet<(int, int)>();
+            for (int i = px - radius; i <= px + radius; i++)
+            for (int j = py - radius; j <= py + radius; j++)
+            {
+                if (!Game.InWorld(i, j)) continue;
+                Tile t = Framing.GetTileSafely(i, j);
+                if (!t.HasTile || t.TileType != TileID.OpenDoor) continue;
+                // One door is a 2x3 block of OpenDoor tiles; close it once, from its top tile.
+                if (Framing.GetTileSafely(i, j - 1).HasTile && Framing.GetTileSafely(i, j - 1).TileType == TileID.OpenDoor) continue;
+                if (!seen.Add((i, j))) continue;
+                var box = new Rectangle((i - 1) * 16, j * 16, 48, 48);
+                if (box.Intersects(p.Hitbox) || Main.npc.Any(n => n.active && n.Hitbox.Intersects(box))) { blocked++; continue; }
+                if (WorldGen.CloseDoor(i, j, true)) closed++;
+                else blocked++;
+            }
+            if (closed == 0 && blocked == 0) { Succeed($"no open doors within {radius} tiles"); return; }
+            string msg = $"closed {closed} door(s)" + (blocked > 0 ? $"; {blocked} could not close (someone in the doorway): step inside and retry" : "");
+            if (closed > 0 || blocked == 0) Succeed(msg); else Fail(msg);
         }
     }
 
