@@ -75,13 +75,6 @@ class Ctx:
         return bool(self.world.get("is_day", True))
 
     @property
-    def danger_out(self) -> bool:
-        """Zombies own the surface: night, rain (they spawn in daylight then: night7 run 9 died 67 times in it) or a
-        blood moon."""
-        w = self.world
-        return not self.is_day or bool(w.get("raining")) or bool(w.get("blood_moon"))
-
-    @property
     def underground(self) -> bool:
         # Main.worldSurface sits well below the actual ground; spawn height is a better reference.
         spawn_y = (self.world.get("spawn") or [0, 10**9])[1]
@@ -393,12 +386,10 @@ class Director:
                 ok, _ = self.call("attack", {"target": "nearest", "max_kills": 2, "desperate": True})
                 if not ok:  # unreachable or no weapon: the bunker is the only other way out
                     self._shelter(c, until_hp=0.7)
-            elif self.memo.home and not c.underground:
+            elif self.memo.home and not c.underground and c.is_day:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): retreating home to recover.", chat=True)
-                if self._hole_up(c):
-                    self.call("wait", {"seconds": 15})
-                else:
-                    self._shelter(c, until_hp=0.7)
+                for name, args in _go_home(self.memo):
+                    self.call(name, args)
             else:
                 # Enemies a few tiles away arrive before a 2x4 hole is dug (two_zombies_low_night died in dig_in every
                 # time): run first, dig in with a head start. 18 tiles was not enough (0/3, 2026-10-16): a zombie walks
@@ -418,13 +409,7 @@ class Director:
         the moment the character stood up (at night, in the rain, at 25-35 hp, into the same zombies)."""
         now = time.time()
         spiral = sum(now - t < 360 for t in self.deaths) >= 2
-        night_out = c.danger_out and not c.underground
-        # With a house, hide in it: spawn sits beside it, and a sealed room holds where a bunker dug among zombies didn't.
-        if self.memo.home and (spiral or night_out or c.hp_frac < 0.8 or c.hostiles(15)):
-            self.memo.bump("respawn_home")
-            self.note("Respawned: into the house and sealing the door before going back to work.", chat=True)
-            if self._hole_up(c):
-                return True
+        night_out = not c.is_day and not c.underground
         # Only with no walker in sight: at a camped spawn the bunker was a trap. A/B night7 run 1 sheltered 59 times
         # after a respawn and 3 held; 31 died mid-dig and 23 found no clean spot (spawn was riddled with old holes),
         # and both arms ran 52-68 deaths an hour against 32 for night5, which had no respawn shelter at all.
@@ -479,13 +464,9 @@ class Director:
         todo = self.runnable(c)
         if not todo:
             return None
-        # Rain only counts with a house to sit it out in: a bunker "until morning" in daylight rain returns at once.
-        if c.is_day and not (c.danger_out and self.memo.home):
+        if c.is_day:
             return todo[0]
-        # Night or rain: zombies and demon eyes own the surface. Underground work, else stay home. With a house, stay
-        # in it: the walk from it to a mine crosses spawn, where the zombies gather.
-        if self.memo.home and not c.underground:
-            return None
+        # Night: zombies and demon eyes own the surface. Underground work, else stay home.
         return next((s for s in todo if s.underground), None)
 
     # -- running a step
@@ -643,44 +624,13 @@ class Director:
             self._shelter(c, until_day=True)
             return
         if self.memo.home and not c.underground:
+            h = self.memo.home
             self.bridge.status(f"AI Director: night ({c.world.get('time')}), staying home", "back to work at dawn")
-            if not self.roof:
-                self.note(f"Night ({c.world.get('time')}): heading home and sealing the door until morning.", chat=True)
-                self._hole_up(c)
+            if abs(c.player.get("x", 0) - (h["x"] + 4)) > 6:
+                self.note(f"Night ({c.world.get('time')}): heading home until morning.", chat=True)
+                for name, args in _go_home(self.memo):
+                    self.call(name, args)
         self.call("wait", {"seconds": 20})
-
-    def _hole_up(self, c: Ctx) -> bool:
-        """Into the house, shut the door, block the column inside it. A shut door alone doesn't hold: in a sim test
-        (2026-10-19) zombies opened it within 60-75 s, three times; with the column blocked none got in for 150 s.
-        The blocks go in self.roof, so _leave_shelter mines them on the way out. True if sealed in."""
-        h = self.memo.home
-        if not h:
-            return False
-        if self.roof:
-            return True
-        x2 = h.get("x2", h["x"] + 11)
-        p = c.player
-        inside = h["x"] < p.get("x", 0) < x2 and h["y"] - 7 < p.get("y", 0) < h["y"]
-        if not inside:
-            if p.get("y", 0) > h["y"]:  # below the floor: spawn on the bench seed is in a hollow under the house
-                self.call("return_to_surface", {})
-            ok, _ = self.call("move_to", {"x": h["x"] + 4, "y": h["y"] - 2, "tolerance": 1})
-            if not ok:
-                return False
-        self.call("close_doors", {"radius": 14})
-        block = next((b for b in ("DirtBlock", "StoneBlock", "Wood") if c.has(b, 3)), None)
-        if not block:
-            return False
-        sealed = []
-        for y in (h["y"] - 1, h["y"] - 2, h["y"] - 3):
-            ok, msg = self.call("place", {"item": block, "x": x2 - 1, "y": y})
-            if ok or re.search(r"occupied by (Dirt|Stone|WoodBlock|Grass)", msg):  # a block, never furniture
-                sealed.append((x2 - 1, y))
-        self.roof = sealed
-        if len(sealed) < 3:
-            return False
-        self.memo.bump("home_seals")
-        return True
 
     def _free_roam(self, c: Ctx) -> None:
         """Everything is done: keep improving (more metal, more life, more loot) until the time budget runs out."""
