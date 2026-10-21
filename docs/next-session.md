@@ -2,13 +2,22 @@
 
 ## Queue order
 
-1. **Running now: `sim/night11.sh`** (2026-10-21 01:55, replaced the day10 light run and night9): three worlds, A/A/B in
-   one night. old and old2 = baseline 2fd777f (their gap is the noise floor), new = rain counts as night (3a0d830).
-   All on mods-night8, 2.7 GB cap each, last start 06:25, done ~07:30.
-   Score: `ARMS="old old2 new" sim/ab_report.sh ~/Library/Caches/terraria-sim/night11`. Write the old-vs-old2 gap into
-   the verify SKILL.md protocol as the floor; new wins only beyond it.
-2. `sim/night10.sh`: its LLM A/B on mods-night9 (~40 min) is still to run. Drop its Director part if night11 decided
-   the rain change; otherwise run it as written. `sim/night9.sh` is superseded by night11's old2 arm.
+1. `sim/night10.sh` (tonight, 2026-10-22): LLM A/B on mods-night9 (~40 min), then a bridge A/B on the new baseline
+   6245dcd: old = mods-night8, new = mods-night9 (mine_nearest partial count, second levelling pass, pinned arena).
+   Judge with `verify.py ab ~/Library/Caches/terraria-sim/night10 --floor-steps 1.2 --floor-deaths 17.4`.
+
+## Overnight 2026-10-21 (night11, 02:02-07:22): rain as night won; first noise floor
+
+| Arm | runs | avg steps | avg deaths | homes |
+|---|---|---|---|---|
+| old (baseline 2fd777f) | 5 | 9.8 | 38.8 | 5/5 |
+| old2 (baseline 2fd777f) | 4 | 11.0 | 56.2 | 3/4 |
+| new (rain as night, 6245dcd) | 5 | **12.0** | **29.2** | 5/5 |
+
+Noise floor (old vs old2): 1.2 steps, 17.4 deaths. new vs the 9 baseline runs (10.3 / 46.6): +1.7 steps, -17.4 deaths:
+a win by the protocol, so 6245dcd is the baseline. Modest: 5 runs, and against old2 alone the step gain (1.0) is inside
+the floor. Per run, new's steps 13/12/12/13/10 vs baseline 9-12. The first launch (01:55) looped in the rain branch and
+was stopped after 6 min (`night11-aborted/`, not counted). Three worlds at 2.7 GB ran all night without an OOM.
 
 ## 2026-10-21 (01:40): light run and fixes for the open issues
 

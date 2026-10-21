@@ -21,11 +21,12 @@ Real-game evidence (scenario suites, Director runs) needs Docker and minutes to 
 
 ## Experiment protocol (Director / survival A/Bs)
 
-1. **Baseline** = the last code that won (now: night7's Director, HEAD 50e919d after the refuge revert). The `old` arm is a frozen copy of `agent/terraria_agent` taken when the queue launches; the `new` arm runs this checkout. Do not edit `agent/` or the queued `sim/nightN.sh` until the queue logs `all done`.
+1. **Baseline** = the last code that won (now: rain counts as night, 6245dcd, which won night11). Arms are frozen copies of a pinned commit (`git archive <commit> agent/terraria_agent`, see `sim/night11.sh`), so the checkout can move on mid-queue. Do not edit `agent/` or the queued `sim/nightN.sh` until the queue logs `all done`.
 2. **Same conditions on both arms:** pinned world (`SIM_SAVES=$c/bench-world`), same bridge build (`SIM_MOD`, a `mods-nightN` dir), same player/world, `--fresh`, `--start-at dawn`, `--advisor none`, `--hours 1`, `TA_TELEMETRY=0`, staggered starts, <= 3 worlds. Change one thing per A/B.
 3. **Score** with `verify.py ab ~/Library/Caches/terraria-sim/nightN`: avg plan steps (higher is better), avg deaths (lower), homes. Runs stopped early (exit 143, a code swap) are excluded by `ab_report.sh`.
 4. **A/A control** before trusting an A/B: both arms on identical code (night9). Its deltas are the noise floor; write them here:
-   - noise floor: *pending night9 (2026-10-21)*. Until it exists, an A/B win needs a gap larger than night8's loss (3 steps, 31 deaths) to be called.
+   - noise floor (night11 A/A, baseline 2fd777f x2, 5 and 4 runs): **1.2 steps, 17.4 deaths** (9.8/38.8 vs 11.0/56.2). Per-run deaths range 4-99, so deaths need a big gap; pass `--floor-steps 1.2 --floor-deaths 17.4`.
+   - A third arm gives the floor and the A/B in one night: `old`, `old2` (same code), `new`; score with `ARMS="old old2 new" sim/ab_report.sh DIR`. Three worlds fit at `SIM_MEM=2700m` (~1.8 GB each), staggered 90 s.
 5. **Judge:** new wins only if steps rise by more than the floor and deaths don't rise by more than the floor, with >= 5 finished runs per arm. Within the floor = no evidence, keep the baseline. A loss is reverted with the numbers in the revert message (`Revert X: nightN A/B lost (deaths A vs B); nightM stays the baseline`), and the handoff (`docs/next-session.md`) gets the table.
 6. **Survival suites run at 1x** (lint-enforced); fast-forward only tracks that freeze the world while the agent thinks (LLM track). Timings are game ticks, not wall time.
 7. **Broken harness != agent failure:** flag the run in `lab.INVALID` with the reason, never delete it.

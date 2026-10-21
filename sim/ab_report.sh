@@ -7,6 +7,9 @@ for name in ${ARMS:-old new}; do
   echo "== $name"
   tot=0; dead=0; homes=0; runs=0
   for f in $(ls "$log/$name"[0-9]*.log 2>/dev/null | sort -V); do
+    r=$(basename "$f" .log); [[ "${r#$name}" =~ ^[0-9]+$ ]] || continue   # not old2-start1
+    other=0; for o in ${ARMS:-old new}; do [ ${#o} -gt ${#name} ] && [[ "$r" == "$o"* ]] && [[ "${r#$o}" =~ ^[0-9]+$ ]] && other=1; done
+    [ $other = 1 ] && continue   # old21 is old2's run 1, not old's run 21
     steps=$(grep -oE 'Session over: [0-9]+' "$f" | tail -1 | grep -oE '[0-9]+$')
     d=$(grep -c '^\[.*\] Died' "$f"); h=$(grep -c 'Done: Build a home' "$f"); t=$(grep -c 'ERR build_house.*build_room timed out' "$f")
     r=$(basename "$f" .log); grep -q "$name run${r#$name} exit 143" "$log/queue.log" && { echo "  $r     stopped early (code swap), not counted"; continue; }
