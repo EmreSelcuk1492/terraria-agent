@@ -187,13 +187,18 @@ namespace TerrariaAgentBridge
         /// removed (trees, houses, liquids), and the ground is three rows of dirt, so every scenario fights on the
         /// same terrain no matter what the world (or the last run) did to it. Returns centre column and ground row.
         /// </summary>
+        // The arena's ground row, measured once per world: measuring it again found the top of whatever the last run
+        // built in the centre column, so each repeat of the station suite started ~20 rows higher on a floating floor.
+        private static (int world, int ground)? arenaGround;
+
         public static (int x, int ground) BuildArena()
         {
             int x = Math.Clamp(Main.spawnTileX + 80, ArenaHalf + 50, Main.maxTilesX - ArenaHalf - 50);
-            int g = Ground(x, 50);
+            if (arenaGround is not { } ag || ag.world != Main.worldID) arenaGround = (Main.worldID, Ground(x, 50));
+            int g = arenaGround.Value.ground;
             for (int i = x - ArenaHalf - 1; i <= x + ArenaHalf + 1; i++)
             {
-                for (int j = g - ArenaHeight; j < g; j++)
+                for (int j = g - 2 * ArenaHeight; j < g; j++)  // twice the height: station runs pillar up ~20 rows
                 {
                     Tile t = Framing.GetTileSafely(i, j);
                     if (t.HasTile) WorldGen.KillTile(i, j, fail: false, effectOnly: false, noItem: true);

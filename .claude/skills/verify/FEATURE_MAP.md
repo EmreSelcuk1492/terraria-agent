@@ -54,6 +54,7 @@ Edit COMPONENTS in verify.py for the curated table; the inventories below come f
 | `scripts/export_bench.py` | Rebuild the results page's datasets from the run logs, so every number on it traces back to a file here. |
 | `scripts/link-mod.sh` | Symlink the bridge mod into tModLoader's ModSources so tModLoader can build it. |
 | `sim/ab_report.sh` | Score a Director A/B night: per run, plan steps done, deaths, whether a home got built, build_room timeouts. |
+| `sim/day10.sh` | Light queue 2026-10-21 (started 01:40, Emre at the Mac): one headless world, 2 CPUs / 2.5 GB, no LLM (advisor none), |
 | `sim/day6.sh` | Light daytime queue 2026-10-18 while the Mac is in use: one headless world at a time, capped at 2 CPUs and 2.5 GB, |
 | `sim/entrypoint.sh` | Start a fake screen, expose the bridge (it binds 127.0.0.1 only) on 0.0.0.0:8979, queue the world autoload, run the game. |
 | `sim/llm_ab.sh` | LLM track A/B on identical worlds: pass 1 with an empty skill library, then a fresh copy of the same world and |
@@ -78,9 +79,9 @@ C# sources: `AgentPlayer.cs`, `Autoload.cs`, `BridgeServer.cs`, `BridgeSystem.cs
 
 ## Tests (`agent/tests/`, offline, mock world)
 
-- `test_director.py` (15 tests): The director against the mock world: the whole starter plan, night rules, and the no-progress guard.
+- `test_director.py` (16 tests): The director against the mock world: the whole starter plan, night rules, and the no-progress guard.
 - `test_lab.py` (4 tests): The lab is public: what leaves for it is scrubbed, and tests can't reach it at all.
-- `test_llm_bench.py` (7 tests): The LLM track's loop against the mock world, with a scripted planner standing in for the model.
+- `test_llm_bench.py` (8 tests): The LLM track's loop against the mock world, with a scripted planner standing in for the model.
 - `test_loop.py` (13 tests): Offline tests: the agent loop + tools against mock_bridge, with a scripted stand-in for the Claude API.
 
 ## What the lab publishes (public)
