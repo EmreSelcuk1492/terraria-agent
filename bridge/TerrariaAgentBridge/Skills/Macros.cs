@@ -25,7 +25,7 @@ namespace TerrariaAgentBridge.Skills
         private bool walked;
         private int steps, placeTries, still, settle;
 
-        private bool leveled;
+        private int levels;  // levelling passes so far: the easier side first, then the other
         private readonly Queue<Skill> todo = new();
         private readonly HashSet<Skill> leveling = new();
         private readonly List<string> levelLog = new();
@@ -33,8 +33,9 @@ namespace TerrariaAgentBridge.Skills
         /// <summary>
         /// Clear a 3x3 space beside the player (toward the side with less to dig) and fill the floor under it, using
         /// any solid block in the inventory (Wood counts). Steps that fail are skipped; the placement retry decides.
+        /// `other`: the harder side, for a second pass when the first side's spot stayed unusable.
         /// </summary>
-        private List<Skill> Level(Player p)
+        private List<Skill> Level(Player p, bool other = false)
         {
             int px = Game.TileX(p), feet = Game.TileY(p) + 1;
             // From the floor, not the body: mid-jump in a 2-wide shaft (station_shaft, 2026-10-16) it cut the hole 6 rows
@@ -44,7 +45,7 @@ namespace TerrariaAgentBridge.Skills
             // open: at the bottom of a 2-wide shaft it is the wall, every mine behind it was out of reach (station_shaft).
             int Edge(int d) => d > 0 ? Explore.RightCol(p) + 1 : Explore.LeftCol(p) - 1;
             int Dig(int d) { int n = 0; for (int k = 0; k < 3; k++) for (int y = feet - 2; y <= feet; y++) if (Game.Solid(Edge(d) + d * k, y)) n++; return n; }
-            int dir = Dig(1) <= Dig(-1) ? 1 : -1;
+            int dir = (Dig(1) <= Dig(-1) ? 1 : -1) * (other ? -1 : 1);
             int block = Game.FindSlot(p, i => i.createTile >= 0 && Main.tileSolid[i.createTile] && !Main.tileSolidTop[i.createTile]
                                                 && !Main.tileFrameImportant[i.createTile] && i.stack > 0);
             var steps = new List<Skill>();
@@ -79,7 +80,7 @@ namespace TerrariaAgentBridge.Skills
             Crafting.RefreshStations(p);
             string name = Game.TileName(tileType);
             if (p.adjTile[tileType]) { Succeed($"next to {name}"); return; }
-            if (++steps > 8) { Fail($"could not get next to a {name}"); return; }
+            if (++steps > 10) { Fail($"could not get next to a {name}"); return; }
 
             if (!walked)
             {
@@ -92,7 +93,7 @@ namespace TerrariaAgentBridge.Skills
             if (slot >= 0)
             {
                 if (PlaceNear(p, slot)) return; // adjTile is checked next tick
-                if (placeTries == 0 && !leveled && (FlatSpot(p) is not { } f0 || FarFrom(p, f0)))
+                if (placeTries == 0 && levels == 0 && (FlatSpot(p) is not { } f0 || FarFrom(p, f0)))
                 {
                     // Boxed in (a shaft, a tunnel end): the nearest flat stretch is up a wall, and walking there pillars you
                     // into the air (station_shaft levelled mid-jump 25 rows up). Level right here instead.
@@ -108,14 +109,16 @@ namespace TerrariaAgentBridge.Skills
                     child = flat is { } f ? new MoveTo(f.x, f.y, 1) : new MoveTo(Game.TileX(p) + off, Game.TileY(p), 2);
                     return;
                 }
-                if (!leveled)
+                if (levels < 2)
                 {
                     if (!Explore.Settled(p, ref still) && settle++ < 120) { steps--; return; } // land first: dig from the floor
                     // No flat ground in reach (a steep hillside, LLM track door task): level a spot beside you the way a
-                    // player would, then try again.
-                    leveled = true;
-                    foreach (var sk in Level(p)) todo.Enqueue(sk);
-                    levelLog.Insert(0, $"levelled from ({Game.TileX(p)},{Game.TileY(p)}) vel {p.velocity.Y:0.0}: {todo.Count} steps");
+                    // player would, then try again. Twice, the other side second: night8 copper_bars levelled one side
+                    // after mining, got bumped 4 rows up by a drop, and that side was out of reach.
+                    settle = 0;
+                    foreach (var sk in Level(p, other: levels == 1)) todo.Enqueue(sk);
+                    levelLog.Add($"levelled {(levels == 0 ? "" : "the other side ")}from ({Game.TileX(p)},{Game.TileY(p)}) vel {p.velocity.Y:0.0}: {todo.Count} steps");
+                    levels++;
                     placeTries = 2;
                     if (todo.Count > 0) { child = todo.Dequeue(); return; }
                 }
