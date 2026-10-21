@@ -63,6 +63,7 @@ Edit COMPONENTS in verify.py for the curated table; the inventories below come f
 | `sim/night-d.sh` | After sim/night-c.sh: the station-levelling + land-before-reach build (mods-night4) through nav, survival and the |
 | `sim/night.sh` | Overnight queue, one world at a time after the survival suite (2026-10-16): |
 | `sim/night10.sh` | Overnight, full capacity 00:00-08:00, after night9's A/A has given a noise floor. |
+| `sim/night11.sh` | Overnight 2026-10-21 from ~01:55 (night9 never launched; replaces the day10 light run), three worlds, all done by ~07:30. |
 | `sim/night5.sh` | Overnight 2026-10-18 on mods-night4 (bridge unchanged since cd6da7d), two worlds at a time (Supabase holds ~2.5 GB |
 | `sim/night6.sh` | Overnight 2026-10-18/19: night5's queue on mods-night6 = the recipe book (POST /recipe, in the LLM track's prompt) |
 | `sim/night7.sh` | Overnight 2026-10-19 A/B: the Director, old code against new, on two worlds side by side (full capacity, 00:00-08:00). |
@@ -80,7 +81,7 @@ C# sources: `AgentPlayer.cs`, `Autoload.cs`, `BridgeServer.cs`, `BridgeSystem.cs
 
 ## Tests (`agent/tests/`, offline, mock world)
 
-- `test_director.py` (16 tests): The director against the mock world: the whole starter plan, night rules, and the no-progress guard.
+- `test_director.py` (17 tests): The director against the mock world: the whole starter plan, night rules, and the no-progress guard.
 - `test_lab.py` (4 tests): The lab is public: what leaves for it is scrubbed, and tests can't reach it at all.
 - `test_llm_bench.py` (8 tests): The LLM track's loop against the mock world, with a scripted planner standing in for the model.
 - `test_loop.py` (13 tests): Offline tests: the agent loop + tools against mock_bridge, with a scripted stand-in for the Claude API.

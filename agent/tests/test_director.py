@@ -64,6 +64,19 @@ def test_rain_counts_as_night(world_and_bridge, tmp_path):
     assert step is not None and step.underground
 
 
+def test_rain_with_nothing_underground_works_the_surface_until_walkers_come(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.raining = True
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    d.memo.done.append("gear")
+    d.plan = [s for s in d.plan if not s.underground]
+    c = d.observe()
+    c.state["npcs"] = []
+    assert d.choose(c) is not None  # no walker near: surface work
+    c.state["npcs"] = [{"name": "Zombie", "hostile": True, "distance": 10}]
+    assert d.choose(c) is None      # a walker near: shelter (via _night)
+
+
 def test_step_that_never_meets_its_goal_gets_parked(world_and_bridge, tmp_path):
     _, bridge = world_and_bridge
     d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)

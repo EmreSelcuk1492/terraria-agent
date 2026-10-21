@@ -477,7 +477,12 @@ class Director:
         if c.surface_safe:
             return todo[0]
         # Night or rain: zombies and demon eyes own the surface. Underground work, else stay home.
-        return next((s for s in todo if s.underground), None)
+        under = next((s for s in todo if s.underground), None)
+        if under or not c.is_day:
+            return under
+        # Rain by day comes in waves, and the bench save already holds the stone and ore the underground steps want:
+        # hiding for the whole shower idled the first night11 run. Surface work while no walker is close.
+        return None if [n for n in c.hostiles(25) if not n.get("flying")] else todo[0]
 
     # -- running a step
 
@@ -634,6 +639,10 @@ class Director:
             self.bridge.status(f"AI Director: {what.lower()} ({c.world.get('time')}), no home yet", f"sheltering underground until {until}")
             self.note(f"{what} ({c.world.get('time')}) and no home: digging in until {until}.", chat=True)
             self._shelter(c, until_day=not c.is_day, wait_seconds=120)
+            if c.is_day:  # dig_in returns at once at full health: wait here, or this loops ~300 calls a minute
+                ok, _ = self.call("wait", {"seconds": 20})
+                if not ok:
+                    time.sleep(10)
             return
         if self.memo.home and not c.underground:
             h = self.memo.home
