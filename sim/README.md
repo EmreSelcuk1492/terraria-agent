@@ -32,7 +32,7 @@ Worlds start headless (`TA_RENDER=1000`: the game draws 1 frame in 1000 once a w
 Software rendering was what held the game at ~21 ticks/s; headless it runs at the normal 60 with ~0.5 GB instead of
 ~2 GB. Fast-forward on top: `/config {"speed": k}` runs k game ticks per frame (about 8-10x real time at k=8).
 
-    sim/scenarios.sh 3 --repeat 3 --tag survival --speed 4
+    sim/scenarios.sh 3 --repeat 3 --tag survival          # survival stays at 1x (fights need reaction time, see below)
     sim/llm_ab.sh primitive --headless --speed 4
 
 Time limits and timings are game time (the bridge's tick counter, `/health` `tick`), so a result means the same at any

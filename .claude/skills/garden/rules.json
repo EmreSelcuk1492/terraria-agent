@@ -1,0 +1,58 @@
+{
+  "_doc": "Rung-2 checks for /garden. Each rule is a correction that should never need making twice. scope/exclude are globs over tracked files (* crosses folders). 'forbid' = pattern must not appear on any line; 'require' = a file whose text matches 'when' must also match 'pattern'. Structural checks (findings schema, skill parity) live in lint.py and take their allowlists from 'allow'. Add a rule whenever /garden promotes a correction to rung 2, and a row to corrections.md.",
+  "ignore": ["third_party/*"],
+  "forbid": [
+    {
+      "id": "no-home-paths",
+      "pattern": "/Users/[A-Za-z0-9._-]+|/home/[a-z][a-z0-9_-]*/|[A-Za-z]:\\\\Users\\\\",
+      "scope": ["*"],
+      "exclude": [".claude/skills/garden/*"],
+      "message": "The lab and the repo are shared: write home paths as ~ or $HOME. Rows sent to the lab go through lab.scrub(), files don't.",
+      "origin": "276e338 lab: publish home paths as ~ (the lab is public)"
+    },
+    {
+      "id": "no-secrets",
+      "pattern": "sk-ant-[A-Za-z0-9_-]{10,}|phc_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}\\.eyJ|SERVICE_ROLE_KEY\\s*=\\s*['\"]?[A-Za-z0-9]",
+      "scope": ["*"],
+      "exclude": [".claude/skills/garden/*"],
+      "message": "Secrets live in ~/.config/lab/env and agent/.env (gitignored), never in a tracked file.",
+      "origin": "lab.py docstring: secrets never in this repo"
+    },
+    {
+      "id": "survival-at-1x",
+      "pattern": "--tag survival.*--speed [2-9]|--speed [2-9].*--tag survival",
+      "scope": ["sim/*", "scripts/*", "*.md"],
+      "exclude": [".claude/skills/garden/*"],
+      "message": "Survival suites run at 1x: fast-forward costs fights reaction time (flier 3/3 at 1x, 1/3 at 4x).",
+      "origin": "01c0209 bench: survival at 1x"
+    },
+    {
+      "id": "findings-commit-pending",
+      "pattern": "\"commit\":\\s*\"(pending|TODO|tbd|)\"",
+      "scope": ["docs/lab/findings.json", "docs/bench/findings.json"],
+      "message": "A published finding cites the real commit that fixed it.",
+      "origin": "ebfac49 findings: commit ref for flee (was \"pending\")"
+    }
+  ],
+  "require": [
+    {
+      "id": "queue-pins-world",
+      "when": "sim/run\\.sh",
+      "pattern": "SIM_SAVES=",
+      "scope": ["sim/night*.sh", "sim/day*.sh"],
+      "message": "A queue that starts worlds with sim/run.sh pins the benchmark world (export SIM_SAVES=\"$c/bench-world\"); run.sh alone falls back to the live Mac save, which changes every time you play.",
+      "origin": "74960f0 bench: pinned benchmark world (SIM_SAVES)"
+    }
+  ],
+  "allow": {
+    "skill-parity": {
+      "bridge_only": {
+        "close_doors": "Director-only primitive (d44bdec); not offered to Claude yet. Debt: decide tool or internal."
+      },
+      "agent_only": {
+        "observe": "handled in Python (tools.py)",
+        "remember": "handled in Python (tools.py)"
+      }
+    }
+  }
+}
