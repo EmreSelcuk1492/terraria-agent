@@ -2,7 +2,7 @@
 # Overnight 2026-10-21 from ~01:55 (night9 never launched; replaces the day10 light run), three worlds, all done by ~07:30.
 #   A/A/B in one night, identical conditions on every arm (mods-night8, pinned world, dawn, advisor off, 2.7 GB cap):
 #     old  = baseline 2fd777f        old2 = baseline 2fd777f (old vs old2 = the noise floor)
-#     new  = rain counts as night (3a0d830)
+#     new  = rain counts as night (6245dcd; 3a0d830 looped, see night11-aborted)
 #   All three are frozen copies (night11/agent-*). Staggered 90 s apart: a world load peaks above 2.5 GB. Last start 06:25.
 # Score: ARMS="old old2 new" sim/ab_report.sh ~/Library/Caches/terraria-sim/night11
 #   mkdir -p ~/Library/Caches/terraria-sim/night11
@@ -40,7 +40,7 @@ freeze() {  # freeze <dir> <commit>: that commit's agent package, so later edits
 }
 freeze agent-old 2fd777f
 freeze agent-old2 2fd777f
-freeze agent-new 3a0d830
+freeze agent-new 6245dcd
 q "night11 start (pid $$)"
 arm new 18995 "$log/agent-new" 0 & a=$!
 arm old 18996 "$log/agent-old" 90 & b=$!
