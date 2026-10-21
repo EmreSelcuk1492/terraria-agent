@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -207,6 +208,34 @@ def recipe_text(check: dict[str, Any], bridge: BridgeClient) -> str:
             "\"any\" goals list each option, do one):\n" + "\n\n".join(trees) + "\n")
 
 
+def needed_items(check: dict[str, Any], bridge: BridgeClient) -> set[str] | None:
+    """Items the goal still has to craft or gather, read off the recipe book (None when the bridge can't say)."""
+    need: set[str] = set()
+    for item, n in goal_items(check):
+        try:
+            r = bridge.recipe(item, n)
+        except BridgeError:
+            return None
+        if not (r.get("ok") and r.get("tree")):
+            return None
+        need.add(item)
+        need.update(re.findall(r"- \d+ (\w+): have \d+, (?:craft|gather)", r["tree"]))
+    return need
+
+
+def side_step(name: str, args: dict[str, Any], need: set[str] | None) -> bool:
+    """A craft or a hunt the goal doesn't need. night8 copper_bars (learned): "attack Slime" with none in range, then
+    "craft 3 Torch" (no Gel) while holding the Torches the Furnace takes; each aborted a program whose real steps
+    worked, before the bars were smelted."""
+    if need is None:
+        return False
+    if name == "craft":
+        return str(args.get("item", "")) not in need
+    if name == "attack":
+        return "Gel" not in need
+    return False
+
+
 def state_text(st: dict[str, Any]) -> str:
     inv = Counter()
     for it in st.get("inventory", []):
@@ -243,8 +272,8 @@ class TaskResult:
 
 
 class Executor:
-    def __init__(self, bridge: BridgeClient, library: SkillLibrary | None, mode: str):
-        self.bridge, self.library, self.mode = bridge, library, mode
+    def __init__(self, bridge: BridgeClient, library: SkillLibrary | None, mode: str, check: dict[str, Any] | None = None):
+        self.bridge, self.library, self.mode, self.check = bridge, library, mode, check
         self.skill_calls = 0
         self.game_seconds = 0.0
         self.used: list[str] = []
@@ -283,6 +312,10 @@ class Executor:
             msg = r.get("message") or r.get("error") or ""
             self.log.append(f"{'ok ' if ok else 'ERR'} {name} {json.dumps(args)} -> {msg[:200]}")
             if not ok:
+                if self.check and not msg.startswith(("LOW HEALTH", "you are dead")) \
+                        and side_step(name, args, needed_items(self.check, self.bridge)):
+                    self.log.append(f"  skipped: the goal doesn't need step {i + 1} ({name} {json.dumps(args)}); carrying on")
+                    continue
                 return False, f"step {i + 1} {name} {json.dumps(args)} failed: {msg[:400]}"
         return True, "program finished"
 
@@ -302,7 +335,7 @@ def run_task(task: Task, bridge: BridgeClient, planner: OllamaPlanner, library: 
         raise BridgeError(r.get("error", "setup failed"))
     calls0, secs0 = planner.calls, planner.seconds
     planner.trace_id, t_task = telemetry.new_id(), time.time()
-    ex = Executor(bridge, library if use_library else None, mode)
+    ex = Executor(bridge, library if use_library else None, mode, task.check if recipes else None)
     ex.log.append(f"start {r.get('at')}, {r.get('trees', '?')} trees within 30 tiles")
     hits = library.search(f"{task.name} {task.goal} {json.dumps(task.check)}") if (library and use_library) else []
     lib_text = "\n".join(s.summary() for s in hits) or "(empty)"

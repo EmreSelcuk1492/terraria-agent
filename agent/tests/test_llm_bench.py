@@ -105,3 +105,20 @@ def test_prompt_carries_the_recipe_book_unless_turned_off(tmp_path):
         llm_bench.run_task(task, bridge, planner, None, "primitive", 1, False, {}, recipes=recipes)
         assert ("Recipe book" in planner.seen[0]) == recipes
         server.shutdown()
+
+
+def test_side_steps_the_goal_does_not_need_are_skipped():
+    class Book:
+        def recipe(self, item, n):
+            return {"ok": True, "tree": f"- {n} {item}: have 0, craft {n}: 1 x [9 CopperOre @ Furnaces]\n"
+                                        "  - station Furnace: none nearby; craft places one if you hold a Furnace:\n"
+                                        "    - 1 Furnace: have 0, craft 1: 1 x [20 StoneBlock, 4 Wood, 3 Torch @ WorkBenches]\n"
+                                        "      - 3 Torch: have them\n"
+                                        "  - 9 CopperOre: have 0, gather 9 (mine_nearest CopperOre)"}
+    need = llm_bench.needed_items({"have": {"CopperBar": 3}}, Book())
+    assert need == {"CopperBar", "Furnace", "CopperOre"}
+    assert llm_bench.side_step("craft", {"item": "Torch", "count": 3}, need)
+    assert llm_bench.side_step("attack", {"target": "Slime"}, need)
+    assert not llm_bench.side_step("craft", {"item": "Furnace"}, need)
+    assert not llm_bench.side_step("mine_nearest", {"target": "Trees"}, need)
+    assert not llm_bench.side_step("craft", {"item": "Torch"}, None)
