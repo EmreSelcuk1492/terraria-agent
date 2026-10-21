@@ -191,6 +191,17 @@ namespace TerrariaAgentBridge.Skills
 
         public override void Tick(Player p)
         {
+            // Stop just before the runner's timeout and say how far we got: a bare "timed out after 180s" hid the
+            // partial count, so LLM-track retries re-ran the whole wood skill in the forest the first attempt had cut
+            // and timed out again walking to trees 120-180 tiles out (copper_bars, 3 passes, 2026-10-16).
+            if (Ticks >= TimeoutTicks - 60 * 2)
+            {
+                int far = current != null ? Math.Abs(currentTarget.x - Game.TileX(p)) : 0;
+                string where = far > 0 ? $" The next target was {far} tiles away: the nearby ones are used up, so move elsewhere or ask only for the shortfall." : "";
+                if (mined > 0) Succeed($"mined {mined}/{count} before the {TimeoutTicks / 60}s limit.{where}");
+                else Fail($"mined 0/{count} in {TimeoutTicks / 60}s.{where}");
+                return;
+            }
             if (current != null)
             {
                 if (Step(current, p)) return;
