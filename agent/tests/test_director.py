@@ -53,6 +53,17 @@ def test_night_prefers_underground_work(world_and_bridge, tmp_path):
     assert step is not None and step.underground
 
 
+def test_rain_counts_as_night(world_and_bridge, tmp_path):
+    world, bridge = world_and_bridge
+    world.raining = True  # rain spawns zombies in daylight
+    d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)
+    d.memo.done.append("gear")
+    c = d.observe()
+    assert c.is_day and not c.surface_safe
+    step = d.choose(c)
+    assert step is not None and step.underground
+
+
 def test_step_that_never_meets_its_goal_gets_parked(world_and_bridge, tmp_path):
     _, bridge = world_and_bridge
     d = Director(bridge, advisor=None, memo_dir=tmp_path, verbose=False)

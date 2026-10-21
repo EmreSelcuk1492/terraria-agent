@@ -75,6 +75,16 @@ class Ctx:
         return bool(self.world.get("is_day", True))
 
     @property
+    def raining(self) -> bool:
+        return bool(self.world.get("raining", False))
+
+    @property
+    def surface_safe(self) -> bool:
+        """Daylight without rain. Rain spawns zombies in daylight: night8's baseline died 18-54 times an hour, most of it
+        in the first 15 min of a rainy dawn, working at spawn among them."""
+        return self.is_day and not self.raining
+
+    @property
     def underground(self) -> bool:
         # Main.worldSurface sits well below the actual ground; spawn height is a better reference.
         spawn_y = (self.world.get("spawn") or [0, 10**9])[1]
@@ -386,7 +396,7 @@ class Director:
                 ok, _ = self.call("attack", {"target": "nearest", "max_kills": 2, "desperate": True})
                 if not ok:  # unreachable or no weapon: the bunker is the only other way out
                     self._shelter(c, until_hp=0.7)
-            elif self.memo.home and not c.underground and c.is_day:
+            elif self.memo.home and not c.underground and c.surface_safe:
                 self.note(f"Low health ({p.get('hp')}/{p.get('max_hp')}): retreating home to recover.", chat=True)
                 for name, args in _go_home(self.memo):
                     self.call(name, args)
@@ -409,7 +419,7 @@ class Director:
         the moment the character stood up (at night, in the rain, at 25-35 hp, into the same zombies)."""
         now = time.time()
         spiral = sum(now - t < 360 for t in self.deaths) >= 2
-        night_out = not c.is_day and not c.underground
+        night_out = not c.surface_safe and not c.underground
         # Only with no walker in sight: at a camped spawn the bunker was a trap. A/B night7 run 1 sheltered 59 times
         # after a respawn and 3 held; 31 died mid-dig and 23 found no clean spot (spawn was riddled with old holes),
         # and both arms ran 52-68 deaths an hour against 32 for night5, which had no respawn shelter at all.
@@ -417,8 +427,8 @@ class Director:
             return False
         if not (spiral or night_out or c.hp_frac < 0.8):
             return False
-        until_day = night_out or (spiral and not c.is_day)
-        why = "second death in 6 min" if spiral else "night on the surface" if night_out else \
+        until_day = (night_out or spiral) and not c.is_day
+        why = "second death in 6 min" if spiral else ("night" if not c.is_day else "rain") + " on the surface" if night_out else \
             f"{c.player.get('hp')}/{c.player.get('max_hp')} hp"
         self.memo.bump("respawn_shelters")
         self.note(f"Respawned ({why}): digging in {'until morning' if until_day else 'to recover'} before going back to work.", chat=True)
@@ -464,9 +474,9 @@ class Director:
         todo = self.runnable(c)
         if not todo:
             return None
-        if c.is_day:
+        if c.surface_safe:
             return todo[0]
-        # Night: zombies and demon eyes own the surface. Underground work, else stay home.
+        # Night or rain: zombies and demon eyes own the surface. Underground work, else stay home.
         return next((s for s in todo if s.underground), None)
 
     # -- running a step
@@ -618,16 +628,18 @@ class Director:
             self.finish()
 
     def _night(self, c: Ctx) -> None:
+        """Night, or rain by day (until_day can't wait out rain: dig in for two minutes and look again)."""
+        what, until = ("Night", "morning") if not c.is_day else ("Rain", "the rain stops")
         if not self.memo.home and not c.underground:
-            self.bridge.status(f"AI Director: night ({c.world.get('time')}), no home yet", "sheltering underground until dawn")
-            self.note(f"Night ({c.world.get('time')}) and no home: digging in until morning.", chat=True)
-            self._shelter(c, until_day=True)
+            self.bridge.status(f"AI Director: {what.lower()} ({c.world.get('time')}), no home yet", f"sheltering underground until {until}")
+            self.note(f"{what} ({c.world.get('time')}) and no home: digging in until {until}.", chat=True)
+            self._shelter(c, until_day=not c.is_day, wait_seconds=120)
             return
         if self.memo.home and not c.underground:
             h = self.memo.home
-            self.bridge.status(f"AI Director: night ({c.world.get('time')}), staying home", "back to work at dawn")
+            self.bridge.status(f"AI Director: {what.lower()} ({c.world.get('time')}), staying home", f"back to work when {until.removeprefix('the ')}")
             if abs(c.player.get("x", 0) - (h["x"] + 4)) > 6:
-                self.note(f"Night ({c.world.get('time')}): heading home until morning.", chat=True)
+                self.note(f"{what} ({c.world.get('time')}): heading home until {until}.", chat=True)
                 for name, args in _go_home(self.memo):
                     self.call(name, args)
         self.call("wait", {"seconds": 20})
@@ -636,7 +648,7 @@ class Director:
         """Everything is done: keep improving (more metal, more life, more loot) until the time budget runs out."""
         p, w = c.player, c.world
         calls: list[Call] = []
-        if c.is_day and "loot_exhausted" not in self.memo.done:
+        if c.surface_safe and "loot_exhausted" not in self.memo.done:
             calls.append(("loot_chests", {"radius": 200, "max": 5}))
         depth = max(p.get("y", 0) + 30, w.get("rock_layer_y", 0) - 10)
         if not c.underground or p.get("y", 0) < w.get("rock_layer_y", 0) - 30:
