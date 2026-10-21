@@ -3,7 +3,8 @@
 #   A/A control: both arms run night7's Director (HEAD after the refuge revert; the bridge is mods-night8, which only
 #   adds close_doors, world.raining and /recipe). night8 lost its A/B by 3 steps and 31 deaths with a 0-step outlier
 #   (new1); this measures how far two arms of the same code drift apart on one night, so the next A/B has a noise floor.
-#   "new" runs this repo's agent, "old" a frozen copy taken at launch (night9/agent-old). No LLM pass: nothing changed there.
+#   Both arms run frozen copies of baseline commit 2fd777f (night9/agent-old, agent-new): the checkout has moved on
+#   (rain change 3a0d830, A/B'd in night10). No LLM pass: nothing changed there.
 # Same seed, dawn start, advisor off on both arms. Score with: sim/ab_report.sh ~/Library/Caches/terraria-sim/night9
 #   nohup caffeinate -i -s sim/night9.sh > ~/Library/Caches/terraria-sim/night9/queue.out 2>&1 &
 set -uo pipefail
@@ -40,9 +41,12 @@ old_arm() {
   arm old 18996 mods-night8 "$log/agent-old"
 }
 
-rm -rf "$log/agent-old"; mkdir -p "$log/agent-old"; cp -R "$here/agent/terraria_agent" "$log/agent-old/"
-q "night9 start (pid $$)"
-arm new 18995 mods-night8 "$here/agent" & a=$!
+base=2fd777f
+for d in agent-old agent-new; do
+  rm -rf "$log/$d"; mkdir -p "$log/$d"; git -C "$here" archive "$base" agent/terraria_agent | tar -x -C "$log/$d" --strip-components 1
+done
+q "night9 start (pid $$), both arms on $base"
+arm new 18995 mods-night8 "$log/agent-new" & a=$!
 old_arm & b=$!
 wait $a $b
 q "all done"

@@ -1,9 +1,32 @@
 # Next testing session
 
-## Overnight 2026-10-21 (queued): A/A control, `sim/night9.sh`
+## Queue order
 
-Both arms run night7's Director (HEAD 50e919d, refuge reverted) on mods-night8. Goal: the noise floor between two
-arms of the same code on one night, before trusting the next A/B. Score: `sim/ab_report.sh ~/Library/Caches/terraria-sim/night9`.
+1. `sim/night9.sh`, A/A control. **Did not run on 2026-10-21** (never launched). Both arms are now pinned to baseline
+   2fd777f (frozen copies), so the checkout moving on doesn't change it. Launch it in the evening; it waits for midnight.
+2. `sim/night10.sh`, the night after: LLM A/B on mods-night9 (~40 min), then the Director A/B, rain as night (3a0d830) vs
+   baseline 2fd777f, both on mods-night8. Judge it against night9's floor.
+
+## 2026-10-21 (01:40): light run and fixes for the open issues
+
+Light queue `sim/day10.sh` (one world, 2 CPUs / 2.5 GB, advisor none, frozen baseline copy, last start 07:00): numbers
+comparable only with other day10 runs. Score: `sim/ab_report.sh` doesn't apply (one arm); count steps/deaths per run.
+
+What night8's baseline journals show: deaths pile up in minutes 0-15 of each run (18-54/h), ~0 in minutes 15-24, and
+again after the next dawn. 0-15 is the first day, and the pinned world starts in rain (Raincoat Zombies, Flying Fish):
+rain spawns zombies by day, the Director treated a rainy day as safe surface time, and the night rules already worked.
+
+Candidates (each still needs its night; nothing here is a win yet):
+
+| Commit | Change | Tested by |
+|---|---|---|
+| 3a0d830 | director: rain counts as night (underground steps 5-8 first, shelter 2 min or go home) | night10 Director A/B |
+| aaf17eb | bridge: mine_nearest stops 2 s before its 180 s cap with the partial count and how far the next target was | night10 LLM |
+| 90dbd27 | bench: a failed craft/attack the goal's recipe book doesn't need is skipped, not fatal (night8 copper_bars learned: attack Slime, craft Torch while holding them) | night10 LLM |
+| b00103e | bridge: station levelling gets a second pass on the other side (night8 copper_bars fresh: Furnace unplaceable after mining) | night10 LLM |
+| 8c9b498 | bridge: arena ground row measured once per world, cleared 24 rows up (station suite crept up ~20 rows per repeat) | next station suite |
+
+Bridge changes are in `mods-night9` only; Director A/Bs stay on mods-night8 until one wins.
 
 ## Overnight 2026-10-20 (night8): house refuge lost
 
