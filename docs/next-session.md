@@ -2,10 +2,13 @@
 
 ## Queue order
 
-1. `sim/night9.sh`, A/A control. **Did not run on 2026-10-21** (never launched). Both arms are now pinned to baseline
-   2fd777f (frozen copies), so the checkout moving on doesn't change it. Launch it in the evening; it waits for midnight.
-2. `sim/night10.sh`, the night after: LLM A/B on mods-night9 (~40 min), then the Director A/B, rain as night (3a0d830) vs
-   baseline 2fd777f, both on mods-night8. Judge it against night9's floor.
+1. **Running now: `sim/night11.sh`** (2026-10-21 01:55, replaced the day10 light run and night9): three worlds, A/A/B in
+   one night. old and old2 = baseline 2fd777f (their gap is the noise floor), new = rain counts as night (3a0d830).
+   All on mods-night8, 2.7 GB cap each, last start 06:25, done ~07:30.
+   Score: `ARMS="old old2 new" sim/ab_report.sh ~/Library/Caches/terraria-sim/night11`. Write the old-vs-old2 gap into
+   the verify SKILL.md protocol as the floor; new wins only beyond it.
+2. `sim/night10.sh`: its LLM A/B on mods-night9 (~40 min) is still to run. Drop its Director part if night11 decided
+   the rain change; otherwise run it as written. `sim/night9.sh` is superseded by night11's old2 arm.
 
 ## 2026-10-21 (01:40): light run and fixes for the open issues
 

@@ -62,6 +62,7 @@ Edit COMPONENTS in verify.py for the curated table; the inventories below come f
 | `sim/night-c.sh` | After sim/night-b.sh: station placement scenarios, then an LLM A/B on every fix from the night (2026-10-16). |
 | `sim/night-d.sh` | After sim/night-c.sh: the station-levelling + land-before-reach build (mods-night4) through nav, survival and the |
 | `sim/night.sh` | Overnight queue, one world at a time after the survival suite (2026-10-16): |
+| `sim/night10.sh` | Overnight, full capacity 00:00-08:00, after night9's A/A has given a noise floor. |
 | `sim/night5.sh` | Overnight 2026-10-18 on mods-night4 (bridge unchanged since cd6da7d), two worlds at a time (Supabase holds ~2.5 GB |
 | `sim/night6.sh` | Overnight 2026-10-18/19: night5's queue on mods-night6 = the recipe book (POST /recipe, in the LLM track's prompt) |
 | `sim/night7.sh` | Overnight 2026-10-19 A/B: the Director, old code against new, on two worlds side by side (full capacity, 00:00-08:00). |

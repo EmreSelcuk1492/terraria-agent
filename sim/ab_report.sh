@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Score a Director A/B night: per run, plan steps done, deaths, whether a home got built, build_room timeouts.
 #   sim/ab_report.sh [night dir]   (default ~/Library/Caches/terraria-sim/night7)
+#   ARMS="old old2 new" for a night with a second baseline arm (A/A/B: old vs old2 is the noise floor)
 log="${1:-$HOME/Library/Caches/terraria-sim/night7}"
-for name in old new; do
+for name in ${ARMS:-old new}; do
   echo "== $name"
   tot=0; dead=0; homes=0; runs=0
   for f in $(ls "$log/$name"[0-9]*.log 2>/dev/null | sort -V); do
